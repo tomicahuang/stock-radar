@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>電子類股篩選</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="電子類股篩選">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="assets/style.css">
+  <script>
+    (function () {
+      var t = 'light';
+      try { t = localStorage.getItem('cria-theme') || 'light'; } catch (e) {}
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"><span></span><span></span><span></span></div>
+      <div>
+        <h1>電子類股篩選</h1>
+      </div>
+    </div>
+    <div class="market" id="market"></div>
+    <div class="meta" id="meta"></div>
+    <button class="btn theme-btn" id="themeBtn" type="button"></button>
+  </header>
+  <script>
+    (function () {
+      var root = document.documentElement, btn = document.getElementById('themeBtn');
+      function label() { btn.textContent = root.getAttribute('data-theme') === 'light' ? '切換黑底' : '切換白底'; }
+      btn.addEventListener('click', function () {
+        var t = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        root.setAttribute('data-theme', t);
+        try { localStorage.setItem('cria-theme', t); } catch (e) {}
+        label();
+      });
+      label();
+    })();
+  </script>
+
+  <main>
+    <div id="nodata" class="panel notice hidden">
+      <h2>尚未有股價資料</h2>
+      <p>請先雙擊資料夾中的 <code>更新資料.bat</code>（或執行 <code>update-data.ps1</code>），完成後重新整理此頁。</p>
+    </div>
+
+    <section class="panel controls">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-mode="break">跌破月線篩選</button>
+        <button class="tab" data-mode="drop">本月跌幅排行 Top 50</button>
+        <button class="tab" data-mode="inst">法人連續買超</button>
+        <button class="tab" data-mode="macd">MACD 翻正 Top 50</button>
+        <button class="tab" data-mode="combo">多條件組合 Top 30</button>
+      </div>
+
+      <div class="hidden" id="ctlCombo">
+        <div class="ctl-row">
+          <div class="combo-cond">
+            <label class="chk"><input type="checkbox" id="cbMacd" checked> <b>MACD 翻正</b></label>
+            <select id="cbMacdWithin">
+              <option value="1">今日</option>
+              <option value="3">3 日內</option>
+              <option value="5" selected>5 日內</option>
+              <option value="10">10 日內</option>
+            </select>
+            <span class="hint">柱狀體由負轉正且仍為正</span>
+          </div>
+          <div class="combo-cond">
+            <label class="chk"><input type="checkbox" id="cbFi" checked> <b>外資連買</b></label>
+            <select id="cbFiDays">
+              <option value="3" selected>≥ 3 天</option>
+              <option value="4">≥ 4 天</option>
+              <option value="5">≥ 5 天</option>
+              <option value="6">≥ 6 天</option>
+              <option value="7">≥ 7 天</option>
+              <option value="8">≥ 8 天</option>
+              <option value="9">≥ 9 天</option>
+              <option value="10">≥ 10 天</option>
+            </select>
+          </div>
+          <div class="combo-cond">
+            <label class="chk"><input type="checkbox" id="cbDrop" checked> <b>月跌幅</b></label>
+            <select id="cbDropBase">
+              <option value="month" selected>本月</option>
+              <option value="rolling">近 20 日</option>
+            </select>
+            <select id="cbDropThr">
+              <option value="10">≥ 10%</option>
+              <option value="15">≥ 15%</option>
+              <option value="20" selected>≥ 20%</option>
+              <option value="25">≥ 25%</option>
+              <option value="30">≥ 30%</option>
+            </select>
+          </div>
+          <div class="combo-cond">
+            <label class="chk"><input type="checkbox" id="cbBreak" checked> <b>跌破月線</b></label>
+            <select id="cbBreakWeeks">
+              <option value="1">1 週內</option>
+              <option value="2">2 週內</option>
+              <option value="3">3 週內</option>
+              <option value="4" selected>4 週內</option>
+            </select>
+            <span class="hint">且目前仍在月線下</span>
+          </div>
+        </div>
+        <div class="ctl-row">
+          <div class="ctl">
+            <label>排行方式</label>
+            <div class="seg" id="segComboMatch">
+              <button data-v="score" class="on">依符合條件數排序</button>
+              <button data-v="all">必須全部符合</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <label>顯示前</label>
+            <select id="cbTop">
+              <option value="30" selected>30 名</option>
+              <option value="50">50 名</option>
+              <option value="100">100 名</option>
+            </select>
+          </div>
+          <div class="ctl grow">
+            <label>各條件符合檔數（目前母體）</label>
+            <div class="combo-stats" id="comboStats"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ctl-row" id="ctlBreak">
+        <div class="ctl">
+          <label>跌破期間</label>
+          <div class="seg" id="segWeeks">
+            <button data-v="1">1 週內</button>
+            <button data-v="2" class="on">2 週內</button>
+            <button data-v="3">3 週內</button>
+            <button data-v="4">4 週內</button>
+          </div>
+        </div>
+        <div class="ctl checks">
+          <label class="chk"><input type="checkbox" id="optBelow" checked> 目前仍在月線下</label>
+          <label class="chk"><input type="checkbox" id="optSlope"> 月線下彎</label>
+          <label class="chk"><input type="checkbox" id="optVol"> 量增跌破（≥1.5 倍）</label>
+          <label class="chk"><input type="checkbox" id="optDip"> 只看「低接觀察」</label>
+        </div>
+      </div>
+
+      <div class="ctl-row hidden" id="ctlDrop">
+        <div class="ctl">
+          <label>區間</label>
+          <div class="seg" id="segBase">
+            <button data-v="month" class="on">本月（月初至今）</button>
+            <button data-v="rolling">近一個月（20 交易日）</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>衡量方式</label>
+          <div class="seg" id="segMetric">
+            <button data-v="change" class="on">區間跌幅</button>
+            <button data-v="drawdown">區間高點回撤</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>門檻 <b id="thrVal">30%</b></label>
+          <input type="range" id="thr" min="5" max="60" step="5" value="30">
+        </div>
+        <div class="ctl checks">
+          <label class="chk"><input type="checkbox" id="optHit"> 只顯示達門檻</label>
+        </div>
+      </div>
+
+      <div class="ctl-row hidden" id="ctlInst">
+        <div class="ctl">
+          <label>法人別</label>
+          <div class="seg" id="segWho">
+            <button data-v="fi" class="on">外資</button>
+            <button data-v="it">投信</button>
+            <button data-v="dl">自營商</button>
+            <button data-v="all">三大法人合計</button>
+            <button data-v="both">外資＋投信同買</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>連續買超至少</label>
+          <div class="seg" id="segDays">
+            <button data-v="3" class="on">3 天</button>
+            <button data-v="4">4</button>
+            <button data-v="5">5</button>
+            <button data-v="6">6</button>
+            <button data-v="7">7</button>
+            <button data-v="8">8</button>
+            <button data-v="9">9</button>
+            <button data-v="10">10 天</button>
+          </div>
+        </div>
+        <div class="ctl checks">
+          <label class="chk"><input type="checkbox" id="optInstBelow"> 只看月線下（法人逆勢承接）</label>
+          <label class="chk"><input type="checkbox" id="optInstTop"> 只顯示前 50 名</label>
+        </div>
+      </div>
+
+      <div class="ctl-row hidden" id="ctlMacd">
+        <div class="ctl">
+          <label>翻正定義</label>
+          <div class="seg" id="segMacdType">
+            <button data-v="osc" class="on">柱狀體翻紅（DIF 上穿 DEA）</button>
+            <button data-v="zero">DIF 突破 0 軸</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>發生於</label>
+          <div class="seg" id="segMacdWithin">
+            <button data-v="1">今日</button>
+            <button data-v="3">3 日內</button>
+            <button data-v="5" class="on">5 日內</button>
+            <button data-v="10">10 日內</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>Top 50 排序依據</label>
+          <div class="seg" id="segMacdSort">
+            <button data-v="strength" class="on">柱狀體強度</button>
+            <button data-v="recent">最新翻正</button>
+            <button data-v="volume">成交量</button>
+          </div>
+        </div>
+        <div class="ctl checks">
+          <label class="chk"><input type="checkbox" id="optMacdStill" checked> 目前仍為正</label>
+          <label class="chk"><input type="checkbox" id="optMacdLow"> 只看 DIF 在 0 軸下（低檔翻正）</label>
+        </div>
+      </div>
+
+      <div class="ctl-row">
+        <div class="ctl">
+          <label>20 日均量 ≥</label>
+          <select id="minVol">
+            <option value="0">不限</option>
+            <option value="100">100 張</option>
+            <option value="200" selected>200 張</option>
+            <option value="500">500 張</option>
+            <option value="1000">1,000 張</option>
+            <option value="3000">3,000 張</option>
+          </select>
+        </div>
+        <div class="ctl grow">
+          <label>搜尋</label>
+          <input type="search" id="q" placeholder="代號或名稱，例如 2330、聯發科">
+        </div>
+        <div class="ctl checks">
+          <label class="chk"><input type="checkbox" id="optCeleb"> 只看名人提及股</label>
+        </div>
+        <div class="ctl">
+          <label>&nbsp;</label>
+          <button class="btn" id="btnCsv">匯出 CSV</button>
+        </div>
+      </div>
+
+      <div class="ctl-row">
+        <div class="ctl grow">
+          <label>產業 <a href="#" id="indAll" class="mini-link">全選</a> <span class="hint">（全選時點一個產業＝只看該產業；之後點其他產業可加選）</span></label>
+          <div class="chips" id="indChips"></div>
+        </div>
+      </div>
+
+      <div class="ctl-row" id="subRow">
+        <div class="ctl grow">
+          <label>細產業（櫃買中心產業價值鏈） <a href="#" id="subClear" class="mini-link">清除細產業</a></label>
+          <div id="subChips"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="kpis" id="kpis"></section>
+
+    <section class="grid2">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>族群廣度：目前收盤在月線下的比例</h2>
+          <span class="hint">點選產業可單獨篩選；游庭皓「看輪動」的觀察方式</span>
+        </div>
+        <div id="breadth"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>訊號說明</h2></div>
+        <ul class="legend">
+          <li><span class="tag bear">空頭排列</span>5 日線 &lt; 10 日線 &lt; 月線（20 日）</li>
+          <li><span class="tag bear">月線下彎</span>月線低於 5 個交易日前</li>
+          <li><span class="tag bear">量增跌破</span>跌破當日成交量 ≥ 前 5 日均量 1.5 倍</li>
+          <li><span class="tag bear">破季線</span>收盤低於 60 日均線</li>
+          <li><span class="tag bull">RSI 超賣</span>RSI(14) &lt; 30</li>
+          <li><span class="tag bull">KD 低檔金叉</span>K 由下往上穿越 D 且 K &lt; 30</li>
+          <li><span class="tag dip">低接觀察</span>月線乖離 ≤ −5% 且 RSI ≤ 40（陳重銘「低接不追高」）</li>
+          <li><span class="tag neutral">已站回月線</span>跌破後收盤重新站上月線</li>
+          <li><span class="tag bull">MACD 翻正</span>近 3 日內 MACD 柱狀體（OSC）由負轉正，且目前仍為正</li>
+          <li><span class="tag inst">土洋同買</span>最新一日外資與投信同步買超</li>
+        </ul>
+        <p class="hint">價格已依證交所「漲跌價差」自動還原除權息，避免除息日誤判跌破。台股慣例：紅漲綠跌。</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <h2 id="tableTitle">篩選結果</h2>
+        <span class="hint">點欄位標題排序；點列開啟 K 線圖</span>
+      </div>
+      <div class="table-wrap" id="tableWrap"></div>
+    </section>
+
+    <section class="panel method">
+      <details>
+        <summary>方法與資料來源</summary>
+        <ul>
+          <li>名人觀點：依序搜尋 Yahoo股市 → PChome股市 → Goodinfo（Goodinfo 無名人文章，改作為個股資料連結）。陳重銘取自 Yahoo股市、PChome股市及主流媒體報導；游庭皓在前兩站無近期專文，改採〈早晨財經速解讀〉節目重點整理；李蜀芳、陳龍三站皆無近期專文，改採 168理財網 節目重點整理。上櫃股（如聯亞、中美晶、頎邦、華星光、上詮）不在上市母體內，僅列於文章摘要。</li>
+          <li>股價：臺灣證券交易所每日收盤行情（MI_INDEX）；產業別：證交所 OpenAPI 上市公司基本資料，電子業 = 產業代碼 24–31。</li>
+          <li>台指期：期交所「期貨每日交易行情」（futDataDown）臺股期貨 TX，取每天最近到期的月合約一般交易時段收盤，串成近月連續價格計算月線（換月時會有小幅跳動）；價差 = 台指期收盤 − 加權指數收盤；夜盤為最新一場盤後交易時段。</li>
+          <li>細產業：櫃買中心「產業價值鏈資訊平台」（ic.tpex.org.tw）各產業鏈的上中下游分類，一檔股票可能同時屬於多個細產業；表格顯示的是與證交所產業別最相符的一個。執行 <code>update-industry.ps1</code> 更新（分類變動不頻繁，偶爾更新即可）。</li>
+          <li>法人買賣超：證交所「三大法人買賣超日報」（T86），外資 = 外陸資（不含外資自營商）＋外資自營商；單位：張。連買天數 = 由最新資料日往回連續買超（&gt; 0）的天數，最多回溯 20 個交易日。</li>
+          <li>MACD(12,26,9)：DIF = EMA12 − EMA26，DEA = DIF 的 9 日 EMA，OSC 柱 = DIF − DEA。「柱狀體翻紅」= OSC 由 ≤ 0 轉為 &gt; 0；「突破 0 軸」= DIF 由 ≤ 0 轉為 &gt; 0。柱狀體強度 = OSC ÷ 股價。</li>
+          <li>多條件組合：可勾選 MACD 翻正、外資連買、月跌幅、跌破月線四項；「依符合條件數排序」= 至少符合一項，符合數多者在前（同分以區間跌幅較深者在前）；「必須全部符合」= 勾選條件皆成立。</li>
+          <li>月線 = 20 日簡單移動平均。「跌破」= 前一日收盤 ≥ 月線，當日收盤 &lt; 月線；取期間內最近一次跌破。</li>
+          <li>週數換算：1 週 = 5 個交易日。期間漲跌 = 最新收盤 ÷ N 週前收盤 − 1。</li>
+          <li>本月跌幅 = 最新收盤 ÷ 上月最後一個交易日收盤 − 1；區間高點回撤 = 最新收盤 ÷ 區間最高收盤 − 1。</li>
+          <li>本頁僅為技術面篩選工具，名人觀點為公開報導摘要，皆不構成投資建議。</li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="panel celebs" id="celebs">
+      <div class="panel-head">
+        <h2>股市名人近期觀點</h2>
+        <span class="hint">點選名人展開近期發表、提及個股與對應的篩選視角；再點一次收合</span>
+      </div>
+      <div class="celeb-list" id="celebList"></div>
+      <div id="celebDetail"></div>
+    </section>
+  </main>
+
+  <aside id="drawer" class="drawer" aria-hidden="true"></aside>
+  <div id="backdrop" class="backdrop"></div>
+
+  <script src="data/celebrity.js"></script>
+  <script src="data/stocks-data.js"></script>
+  <script src="data/subindustry.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>
