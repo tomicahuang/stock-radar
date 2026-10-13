@@ -1,0 +1,67 @@
+name: update-data
+
+on:
+  schedule:
+    # cron is UTC: 09:30 / 12:30 UTC = 17:30 / 20:30 Taipei, Mon-Fri
+    - cron: '30 9 * * 1-5'
+    - cron: '30 12 * * 1-5'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: stock-radar
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.event_name != 'push'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Taipei time
+        run: tzutil /s "Taipei Standard Time"
+      - name: Fetch TWSE / TAIFEX data
+        shell: powershell
+        run: .\update-data.ps1
+      - name: Save data to repo
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then echo "No data change"; exit 0; fi
+          git commit -q -m "Auto update $(date '+%Y-%m-%d %H:%M')"
+          git pull -q --rebase origin main
+          git push -q origin HEAD:main
+
+  deploy:
+    needs: update
+    if: always() && (needs.update.result == 'success' || needs.update.result == 'skipped')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Collect web page files
+        run: |
+          mkdir -p _site/data
+          cp index.html manifest.json _site/
+          cp -r assets _site/
+          cp data/*.js _site/data/
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
