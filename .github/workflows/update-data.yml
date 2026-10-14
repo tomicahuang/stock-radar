@@ -59,6 +59,9 @@ jobs:
           cp -r assets _site/
           cp data/*.js _site/data/
           touch _site/.nojekyll
+          # phones cache css/js; a per-deploy version makes them fetch the new files
+          sed -i -E "s#(href|src)=\"((assets|data)/[^\"?]+\.(css|js))\"#\1=\"\2?v=${GITHUB_RUN_ID}\"#g" _site/index.html
+          grep -o 'v=[0-9]*' _site/index.html | sort -u
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
