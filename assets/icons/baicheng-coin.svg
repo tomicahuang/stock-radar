@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <title>百程有伶</title>
+  <g transform="translate(100 100)">
+    <circle r="92" fill="#D9AE45" stroke="#A87B1F" stroke-width="4"/>
+    <circle r="79" fill="none" stroke="#A87B1F" stroke-width="2"/>
+    <rect x="-27" y="-27" width="54" height="54" fill="none" stroke="#A87B1F" stroke-width="2"/>
+    <rect x="-19" y="-19" width="38" height="38" fill="#FFFFFF" stroke="#A87B1F" stroke-width="3"/>
+    <g font-family="'Noto Serif TC','Source Han Serif TC','PMingLiU','MingLiU',serif" font-weight="700" font-size="40" fill="#9E2421" text-anchor="middle" dominant-baseline="central">
+      <text x="0" y="-52">百</text>
+      <text x="52" y="0">程</text>
+      <text x="0" y="52">有</text>
+      <text x="-52" y="0">伶</text>
+    </g>
+  </g>
+</svg>
