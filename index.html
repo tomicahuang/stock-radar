@@ -51,11 +51,12 @@
 
     <section class="panel controls">
       <div class="tabs" role="tablist">
-        <button class="tab active" data-mode="break">跌破月線篩選</button>
-        <button class="tab" data-mode="drop">本月跌幅排行 Top 50</button>
-        <button class="tab" data-mode="inst">法人連續買超</button>
-        <button class="tab" data-mode="macd">MACD 翻正 Top 50</button>
-        <button class="tab" data-mode="combo">多條件組合 Top 30</button>
+        <button class="tab active" data-mode="break" data-label="跌破均線">跌破均線 Top 50</button>
+        <button class="tab" data-mode="up" data-label="站上均線">站上均線 Top 50</button>
+        <button class="tab" data-mode="drop" data-label="本月跌幅">本月跌幅 Top 50</button>
+        <button class="tab" data-mode="inst" data-label="法人連買">法人連買 Top 50</button>
+        <button class="tab" data-mode="macd" data-label="MACD 翻正">MACD 翻正 Top 50</button>
+        <button class="tab" data-mode="combo" data-label="多條件組合">多條件組合 Top 50</button>
       </div>
 
       <div class="hidden" id="ctlCombo">
@@ -98,14 +99,36 @@
             </select>
           </div>
           <div class="combo-cond">
-            <label class="chk"><input type="checkbox" id="cbBreak" checked> <b>跌破月線</b></label>
-            <select id="cbBreakWeeks">
-              <option value="1">1 週內</option>
-              <option value="2">2 週內</option>
-              <option value="3">3 週內</option>
-              <option value="4" selected>4 週內</option>
+            <label class="chk"><input type="checkbox" id="cbBreak" checked> <b>跌破均線</b></label>
+            <select id="cbBreakMa">
+              <option value="5">5日線</option>
+              <option value="10">10日線</option>
+              <option value="20" selected>月線（20日）</option>
             </select>
-            <span class="hint">且目前仍在月線下</span>
+            <select id="cbBreakDays">
+              <option value="1">今日</option>
+              <option value="3">3 日內</option>
+              <option value="5">1 週內</option>
+              <option value="10">2 週內</option>
+              <option value="20" selected>4 週內</option>
+            </select>
+            <span class="hint">且目前仍在線下</span>
+          </div>
+          <div class="combo-cond">
+            <label class="chk"><input type="checkbox" id="cbUp"> <b>站上均線</b></label>
+            <select id="cbUpMa">
+              <option value="5" selected>5日線</option>
+              <option value="10">10日線</option>
+              <option value="20">月線（20日）</option>
+            </select>
+            <select id="cbUpDays">
+              <option value="1">今日</option>
+              <option value="3">3 日內</option>
+              <option value="5" selected>1 週內</option>
+              <option value="10">2 週內</option>
+              <option value="20">4 週內</option>
+            </select>
+            <span class="hint">且目前仍在線上</span>
           </div>
         </div>
         <div class="ctl-row">
@@ -116,14 +139,6 @@
               <button data-v="all">必須全部符合</button>
             </div>
           </div>
-          <div class="ctl">
-            <label>顯示前</label>
-            <select id="cbTop">
-              <option value="30" selected>30 名</option>
-              <option value="50">50 名</option>
-              <option value="100">100 名</option>
-            </select>
-          </div>
           <div class="ctl grow">
             <label>各條件符合檔數（目前母體）</label>
             <div class="combo-stats" id="comboStats"></div>
@@ -133,19 +148,55 @@
 
       <div class="ctl-row" id="ctlBreak">
         <div class="ctl">
+          <label>跌破哪條均線</label>
+          <div class="seg" id="segBreakMa">
+            <button data-v="5">5日線</button>
+            <button data-v="10">10日線</button>
+            <button data-v="20" class="on">月線（20日）</button>
+          </div>
+        </div>
+        <div class="ctl">
           <label>跌破期間</label>
-          <div class="seg" id="segWeeks">
-            <button data-v="1">1 週內</button>
-            <button data-v="2" class="on">2 週內</button>
-            <button data-v="3">3 週內</button>
-            <button data-v="4">4 週內</button>
+          <div class="seg" id="segBreakDays">
+            <button data-v="1">今日</button>
+            <button data-v="3">3 日內</button>
+            <button data-v="5">1 週內</button>
+            <button data-v="10" class="on">2 週內</button>
+            <button data-v="20">4 週內</button>
           </div>
         </div>
         <div class="ctl checks">
-          <label class="chk"><input type="checkbox" id="optBelow" checked> 目前仍在月線下</label>
-          <label class="chk"><input type="checkbox" id="optSlope"> 月線下彎</label>
+          <label class="chk"><input type="checkbox" id="optBelow" checked> <span id="lblBelow">目前仍在月線下</span></label>
+          <label class="chk"><input type="checkbox" id="optSlope"> <span id="lblSlope">月線下彎</span></label>
           <label class="chk"><input type="checkbox" id="optVol"> 量增跌破（≥1.5 倍）</label>
           <label class="chk"><input type="checkbox" id="optDip"> 只看「低接觀察」</label>
+        </div>
+      </div>
+
+      <div class="ctl-row hidden" id="ctlUp">
+        <div class="ctl">
+          <label>站上哪條均線</label>
+          <div class="seg" id="segUpMa">
+            <button data-v="5">5日線</button>
+            <button data-v="10">10日線</button>
+            <button data-v="20" class="on">月線（20日）</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>站上期間</label>
+          <div class="seg" id="segUpDays">
+            <button data-v="1">今日</button>
+            <button data-v="3">3 日內</button>
+            <button data-v="5" class="on">1 週內</button>
+            <button data-v="10">2 週內</button>
+            <button data-v="20">4 週內</button>
+          </div>
+        </div>
+        <div class="ctl checks">
+          <label class="chk"><input type="checkbox" id="optAbove" checked> <span id="lblAbove">目前仍在月線上</span></label>
+          <label class="chk"><input type="checkbox" id="optUpSlope"> <span id="lblUpSlope">月線上揚</span></label>
+          <label class="chk"><input type="checkbox" id="optUpVol"> 量增站上（≥1.5 倍）</label>
+          <label class="chk"><input type="checkbox" id="optBull"> 只看「多頭排列」</label>
         </div>
       </div>
 
@@ -199,7 +250,6 @@
         </div>
         <div class="ctl checks">
           <label class="chk"><input type="checkbox" id="optInstBelow"> 只看月線下（法人逆勢承接）</label>
-          <label class="chk"><input type="checkbox" id="optInstTop"> 只顯示前 50 名</label>
         </div>
       </div>
 
@@ -236,6 +286,14 @@
 
       <div class="ctl-row">
         <div class="ctl">
+          <label>顯示前</label>
+          <select id="topN">
+            <option value="30">Top 30</option>
+            <option value="50" selected>Top 50</option>
+            <option value="100">Top 100</option>
+          </select>
+        </div>
+        <div class="ctl">
           <label>20 日均量 ≥</label>
           <select id="minVol">
             <option value="0">不限</option>
@@ -256,6 +314,13 @@
         <div class="ctl">
           <label>&nbsp;</label>
           <button class="btn" id="btnCsv">匯出 CSV</button>
+        </div>
+      </div>
+
+      <div class="ctl-row">
+        <div class="ctl grow">
+          <label>類股範圍 <span class="hint">（有打勾才加入篩選；切換後產業會重設為全選）</span></label>
+          <div class="ctl checks grp-checks" id="grpChecks"></div>
         </div>
       </div>
 
@@ -287,6 +352,7 @@
       <div class="panel">
         <div class="panel-head"><h2>訊號說明</h2></div>
         <ul class="legend">
+          <li><span class="tag bull">多頭排列</span>5 日線 &gt; 10 日線 &gt; 月線（20 日）</li>
           <li><span class="tag bear">空頭排列</span>5 日線 &lt; 10 日線 &lt; 月線（20 日）</li>
           <li><span class="tag bear">月線下彎</span>月線低於 5 個交易日前</li>
           <li><span class="tag bear">量增跌破</span>跌破當日成交量 ≥ 前 5 日均量 1.5 倍</li>
@@ -294,7 +360,8 @@
           <li><span class="tag bull">RSI 超賣</span>RSI(14) &lt; 30</li>
           <li><span class="tag bull">KD 低檔金叉</span>K 由下往上穿越 D 且 K &lt; 30</li>
           <li><span class="tag dip">低接觀察</span>月線乖離 ≤ −5% 且 RSI ≤ 40（陳重銘「低接不追高」）</li>
-          <li><span class="tag neutral">已站回月線</span>跌破後收盤重新站上月線</li>
+          <li><span class="tag bull">量增站上</span>站上當日成交量 ≥ 前 5 日均量 1.5 倍</li>
+          <li><span class="tag neutral">已站回／已跌回</span>跌破後又站回該均線，或站上後又跌回</li>
           <li><span class="tag bull">MACD 翻正</span>近 3 日內 MACD 柱狀體（OSC）由負轉正，且目前仍為正</li>
           <li><span class="tag inst">土洋同買</span>最新一日外資與投信同步買超</li>
         </ul>
@@ -315,14 +382,16 @@
         <summary>方法與資料來源</summary>
         <ul>
           <li>名人觀點：依序搜尋 Yahoo股市 → PChome股市 → Goodinfo（Goodinfo 無名人文章，改作為個股資料連結）。陳重銘取自 Yahoo股市、PChome股市及主流媒體報導；游庭皓在前兩站無近期專文，改採〈早晨財經速解讀〉節目重點整理；李蜀芳、陳龍三站皆無近期專文，改採 168理財網 節目重點整理。上櫃股（如聯亞、中美晶、頎邦、華星光、上詮）不在上市母體內，僅列於文章摘要。</li>
-          <li>股價：臺灣證券交易所每日收盤行情（MI_INDEX）；產業別：證交所 OpenAPI 上市公司基本資料，電子業 = 產業代碼 24–31。</li>
+          <li>股價：臺灣證券交易所每日收盤行情（MI_INDEX）；產業別：證交所 OpenAPI 上市公司基本資料。類股範圍：電子 = 產業代碼 24–31、航運 = 15、金融 = 17（金融保險）、傳產 = 其餘上市產業（不含存託憑證）。</li>
           <li>台指期：期交所「期貨每日交易行情」（futDataDown）臺股期貨 TX，取每天最近到期的月合約一般交易時段收盤，串成近月連續價格計算月線（換月時會有小幅跳動）；價差 = 台指期收盤 − 加權指數收盤；夜盤為最新一場盤後交易時段。</li>
           <li>細產業：櫃買中心「產業價值鏈資訊平台」（ic.tpex.org.tw）各產業鏈的上中下游分類，一檔股票可能同時屬於多個細產業；表格顯示的是與證交所產業別最相符的一個。執行 <code>update-industry.ps1</code> 更新（分類變動不頻繁，偶爾更新即可）。</li>
           <li>法人買賣超：證交所「三大法人買賣超日報」（T86），外資 = 外陸資（不含外資自營商）＋外資自營商；單位：張。連買天數 = 由最新資料日往回連續買超（&gt; 0）的天數，最多回溯 20 個交易日。</li>
           <li>MACD(12,26,9)：DIF = EMA12 − EMA26，DEA = DIF 的 9 日 EMA，OSC 柱 = DIF − DEA。「柱狀體翻紅」= OSC 由 ≤ 0 轉為 &gt; 0；「突破 0 軸」= DIF 由 ≤ 0 轉為 &gt; 0。柱狀體強度 = OSC ÷ 股價。</li>
-          <li>多條件組合：可勾選 MACD 翻正、外資連買、月跌幅、跌破月線四項；「依符合條件數排序」= 至少符合一項，符合數多者在前（同分以區間跌幅較深者在前）；「必須全部符合」= 勾選條件皆成立。</li>
-          <li>月線 = 20 日簡單移動平均。「跌破」= 前一日收盤 ≥ 月線，當日收盤 &lt; 月線；取期間內最近一次跌破。</li>
-          <li>週數換算：1 週 = 5 個交易日。期間漲跌 = 最新收盤 ÷ N 週前收盤 − 1。</li>
+          <li>多條件組合：可勾選 MACD 翻正、外資連買、月跌幅、跌破均線、站上均線五項（均線可各自選 5／10／20 日）；「依符合條件數排序」= 至少符合一項，符合數多者在前（同分以區間跌幅較深者在前）；「必須全部符合」= 勾選條件皆成立。</li>
+          <li>均線 = 簡單移動平均（5日線、10日線、月線 = 20 日）。「跌破」= 前一日收盤 ≥ 均線，當日收盤 &lt; 均線；「站上」= 前一日收盤 ≤ 均線，當日收盤 &gt; 均線；皆取期間內最近一次。均線下彎／上揚：5日線比前 1 日、10日線比前 2 日、月線比前 5 日。</li>
+          <li>Top 排行：跌破均線依乖離（跌最深）、站上均線依最新站上再依量比、本月跌幅依跌幅、法人連買依連買天數、MACD 依所選排序、多條件依符合數，取前 30／50／100 名（上方「顯示前」可切換）。點欄位標題可在結果內重新排序。</li>
+          <li>期間換算：1 週 = 5 個交易日。期間漲跌 = 最新收盤 ÷ 期間起點收盤 − 1。</li>
+          <li>篩選設定會記在這台裝置（手機、電腦各自記住），下次打開維持上次的選擇。</li>
           <li>本月跌幅 = 最新收盤 ÷ 上月最後一個交易日收盤 − 1；區間高點回撤 = 最新收盤 ÷ 區間最高收盤 − 1。</li>
           <li>本頁僅為技術面篩選工具，名人觀點為公開報導摘要，皆不構成投資建議。</li>
         </ul>

@@ -1,4 +1,4 @@
-# Fetch TWSE listed electronics stocks daily OHLCV + institutional net buy/sell and build data/stocks-data.js
+# Fetch TWSE listed stocks (all industries except depositary receipts) daily OHLCV + institutional net buy/sell and build data/stocks-data.js
 # Usage: powershell -NoProfile -ExecutionPolicy Bypass -File update-data.ps1 [-TradingDays 100] [-InstDays 20]
 param(
   [int]$TradingDays = 100,
@@ -28,7 +28,8 @@ $N_TAIEX = [regex]::Unescape('\u767c\u884c\u91cf\u52a0\u6b0a\u80a1\u50f9\u6307\u
 $N_ELEC  = [regex]::Unescape('\u96fb\u5b50\u5de5\u696d\u985e\u6307\u6578')
 $S_REG   = [regex]::Unescape('\u4e00\u822c')
 
-$ElecIndustries = @('24', '25', '26', '27', '28', '29', '30', '31')
+# 91 = depositary receipts (TDR); everything else is kept, the page groups them into electronics / shipping / finance / traditional
+$SkipIndustries = @('91')
 
 function Get-Text([string]$url) {
   for ($i = 1; $i -le 3; $i++) {
@@ -149,11 +150,11 @@ $companies = (Get-Text 'https://openapi.twse.com.tw/v1/opendata/t187ap03_L') | C
 $elec = @{}
 foreach ($co in $companies) {
   $ind = ([string]$co.$K_IND).Trim()
-  if ($ElecIndustries -contains $ind) {
+  if ($ind -and -not ($SkipIndustries -contains $ind)) {
     $elec[([string]$co.$K_CODE).Trim()] = @{ ind = $ind; abbr = ([string]$co.$K_ABBR).Trim() }
   }
 }
-Write-Host ("      electronics companies: {0}" -f $elec.Count)
+Write-Host ("      listed companies: {0}" -f $elec.Count)
 
 # ---------------------------------------------------------------- 2. daily quotes
 Write-Host "[2/5] TWSE MI_INDEX daily quotes (target $TradingDays trading days, cached in data\cache) ..."

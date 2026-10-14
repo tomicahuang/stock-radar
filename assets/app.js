@@ -4,9 +4,22 @@
   const DATA = window.STOCK_DATA;
   const CELEB = window.CELEB || { people: [], mentions: {} };
   const IND = {
+    '01': '水泥', '02': '食品', '03': '塑膠', '04': '紡織纖維', '05': '電機機械', '06': '電器電纜',
+    '08': '玻璃陶瓷', '09': '造紙', '10': '鋼鐵', '11': '橡膠', '12': '汽車', '14': '建材營造',
+    '15': '航運業', '16': '觀光餐旅', '17': '金融保險業', '18': '貿易百貨', '19': '綜合', '20': '其他',
+    '21': '化學', '22': '生技醫療', '23': '油電燃氣',
     '24': '半導體業', '25': '電腦及週邊設備業', '26': '光電業', '27': '通信網路業',
-    '28': '電子零組件業', '29': '電子通路業', '30': '資訊服務業', '31': '其他電子業'
+    '28': '電子零組件業', '29': '電子通路業', '30': '資訊服務業', '31': '其他電子業',
+    '32': '文化創意', '33': '農業科技', '34': '電子商務', '35': '綠能環保', '36': '數位雲端', '37': '運動休閒', '38': '居家生活'
   };
+  const GROUPS = { elec: '電子', ship: '航運', trad: '傳產', fin: '金融' };
+  const groupOf = ind => (ind >= '24' && ind <= '31' ? 'elec' : ind === '15' ? 'ship' : ind === '17' ? 'fin' : 'trad');
+  const MA_NAME = { 5: '5日線', 10: '10日線', 20: '月線' };
+  const MA_SLOPE_LOOK = { 5: 1, 10: 2, 20: 5 };
+  const DAYS_LABEL = { 1: '今日', 3: '3 日內', 5: '1 週內', 10: '2 週內', 20: '4 週內' };
+  const daysLabel = d => DAYS_LABEL[d] || `${d} 日內`;
+  const TOP_CHOICES = [30, 50, 100];
+  const MODES = ['break', 'up', 'drop', 'inst', 'macd', 'combo'];
   const PEOPLE = Object.fromEntries((CELEB.people || []).map(p => [p.id, p]));
   const SUB = window.SUB_IND && window.SUB_IND.groups ? window.SUB_IND : null;
   // Product value chains used for the sub-industry chips; theme chains (AI, cloud…) only show in the drawer.
@@ -47,13 +60,22 @@
 
   const state = {
     mode: 'break',
-    weeks: 2,
+    topN: 50,
+    breakMa: 20,
+    breakDays: 10,
     stillBelow: true,
     slopeDown: false,
     volBreak: false,
     dipOnly: false,
+    upMa: 20,
+    upDays: 5,
+    stillAbove: true,
+    upSlope: false,
+    upVol: false,
+    bullOnly: false,
     minVol: 200,
-    industries: new Set(Object.keys(IND)),
+    groups: new Set(['elec']),
+    industries: new Set(),
     subs: new Set(),
     subMore: false,
     celebOnly: false,
@@ -65,7 +87,6 @@
     instWho: 'fi',
     instDays: 3,
     instBelow: false,
-    instTop: false,
     macdType: 'osc',
     macdWithin: 5,
     macdSort: 'strength',
@@ -79,15 +100,21 @@
     cbDropBase: 'month',
     cbDropThr: 20,
     cbBreak: true,
-    cbBreakWeeks: 4,
+    cbBreakMa: 20,
+    cbBreakDays: 20,
+    cbUp: false,
+    cbUpMa: 5,
+    cbUpDays: 5,
     comboMatch: 'score',
-    cbTop: 30,
     openCeleb: null,
     sortKey: null,
     sortDir: 1
   };
   const WHO = { fi: '外資', it: '投信', dl: '自營商', all: '三大法人合計', both: '外資＋投信同買' };
-  const COMBO_KEY = { macd: 'cbMacd', fi: 'cbFi', drop: 'cbDrop', brk: 'cbBreak' };
+  const COMBO_KEY = { macd: 'cbMacd', fi: 'cbFi', drop: 'cbDrop', brk: 'cbBreak', up: 'cbUp' };
+  const COMBO_ORDER = ['macd', 'fi', 'drop', 'brk', 'up'];
+  // <select> controls whose id equals the numeric state key
+  const NUM_CTLS = ['topN', 'cbMacdWithin', 'cbFiDays', 'cbDropThr', 'cbBreakMa', 'cbBreakDays', 'cbUpMa', 'cbUpDays'];
 
   if (!DATA || !DATA.dates || !DATA.stocks) {
     $('#nodata').classList.remove('hidden');
@@ -221,7 +248,7 @@
     const { K, D } = kd(h, l, fc, 9);
     const { dif, dea, osc } = macd(fc);
     const st = {
-      code: s.c, name: s.n, ind: s.i, indName: IND[s.i] || s.i,
+      code: s.c, name: s.n, ind: s.i, indName: IND[s.i] || s.i, grp: groupOf(s.i),
       raw: s.cl, c, fc, o, h, l, v, ma5, ma10, ma20, ma60, rsi: r, K, D, dif, dea, osc,
       fi: s.fi || null, it: s.it || null, dl: s.dl || null,
       mentions: (CELEB.mentions || {})[s.c] || [],
@@ -234,6 +261,7 @@
     st.below = ma20[LAST] != null && fc[LAST] < ma20[LAST];
     st.slopeDown = ma20[LAST] != null && ma20[LAST - 5] != null && ma20[LAST] < ma20[LAST - 5];
     st.bearAlign = ma5[LAST] != null && ma10[LAST] != null && ma20[LAST] != null && ma5[LAST] < ma10[LAST] && ma10[LAST] < ma20[LAST];
+    st.bullAlign = ma5[LAST] != null && ma10[LAST] != null && ma20[LAST] != null && ma5[LAST] > ma10[LAST] && ma10[LAST] > ma20[LAST];
     st.belowMA60 = ma60[LAST] != null && fc[LAST] < ma60[LAST];
     st.rsiNow = r[LAST];
     st.kNow = K[LAST];
@@ -256,6 +284,44 @@
     const j = instLast;
     st.bothBuy = j >= 0 && st.fi && st.it && st.fi[j] > 0 && st.it[j] > 0;
   }
+
+  // Industry codes that have stocks in the checked groups (electronics / shipping / traditional / finance).
+  function visibleCodes() {
+    return [...new Set(stocks.filter(s => state.groups.has(s.grp)).map(s => s.ind))].sort();
+  }
+
+  // ------------------------------------------------------------------ remember settings on this device
+  const SAVE_KEY = 'stock-radar-settings-v2';
+  const SAVE_SKIP = new Set(['openCeleb', 'sortKey', 'sortDir', 'subMore', 'query']);
+  function saveState() {
+    try {
+      const o = {};
+      for (const [k, v] of Object.entries(state)) if (!SAVE_SKIP.has(k)) o[k] = v instanceof Set ? [...v] : v;
+      localStorage.setItem(SAVE_KEY, JSON.stringify(o));
+    } catch (e) { /* private mode or storage full: settings just are not kept */ }
+  }
+  function loadState() {
+    let o = null;
+    try { o = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { o = null; }
+    if (o && typeof o === 'object') {
+      for (const [k, v] of Object.entries(o)) {
+        if (!(k in state) || SAVE_SKIP.has(k)) continue;
+        const cur = state[k];
+        if (cur instanceof Set) { if (Array.isArray(v)) state[k] = new Set(v); }
+        else if (cur === null || typeof cur === typeof v) state[k] = v;
+      }
+    }
+    if (!MODES.includes(state.mode)) state.mode = 'break';
+    if (!TOP_CHOICES.includes(state.topN)) state.topN = 50;
+    state.groups = new Set([...state.groups].filter(g => GROUPS[g]));
+    if (!state.groups.size) state.groups = new Set(['elec']);
+    const vis = new Set(visibleCodes());
+    state.industries = new Set([...state.industries].filter(c => vis.has(c)));
+    if (!state.industries.size) state.industries = vis;
+    const subKeys = new Set(SUB_GROUPS.map(g => g.key));
+    state.subs = new Set([...state.subs].filter(k => subKeys.has(k)));
+  }
+  loadState();
 
   // Most recent index within the last `within` days where series turns from <= 0 to > 0.
   function findCross(a, within) {
@@ -285,18 +351,29 @@
     return { n, cum, startJ: instLast - n + 1 };
   }
 
-  function findBreak(st, weeks) {
-    const from = Math.max(1, T - weeks * 5);
+  const maOf = (st, n) => st['ma' + n];
+  const biasOf = (st, n) => { const m = maOf(st, n)[LAST]; return m ? st.close / m - 1 : null; };
+  const isBelow = (st, n) => maOf(st, n)[LAST] != null && st.close < maOf(st, n)[LAST];
+  const isAbove = (st, n) => maOf(st, n)[LAST] != null && st.close > maOf(st, n)[LAST];
+  function maSlope(st, n) {
+    const m = maOf(st, n), p = LAST - MA_SLOPE_LOOK[n];
+    return p >= 0 && m[LAST] != null && m[p] != null ? m[LAST] - m[p] : null;
+  }
+
+  // Most recent day within the last `days` trading days where the close crosses the n-day MA:
+  // dir < 0 = break below (prev close >= MA, close < MA), dir > 0 = move above (prev close <= MA, close > MA).
+  function findMaCross(st, n, days, dir) {
+    const m = maOf(st, n), from = Math.max(1, T - days);
     for (let t = LAST; t >= from; t--) {
       if (st.raw[t] == null) continue;
-      const a = st.fc[t - 1], b = st.ma20[t - 1], x = st.fc[t], y = st.ma20[t];
+      const a = st.fc[t - 1], b = m[t - 1], x = st.fc[t], y = m[t];
       if (a == null || b == null || x == null || y == null) continue;
-      if (a >= b && x < y) return t;
+      if (dir < 0 ? a >= b && x < y : a <= b && x > y) return t;
     }
     return -1;
   }
 
-  function breakVolRatio(st, t) {
+  function volRatioAt(st, t) {
     const prev = avg(st.v.slice(Math.max(0, t - 5), t));
     return prev ? st.v[t] / prev : null;
   }
@@ -322,10 +399,12 @@
 
   function signalTags(st, extra) {
     const t = [];
-    if (extra && extra.reclaimed) t.push('<span class="tag neutral">已站回月線</span>');
+    if (extra && extra.note) t.push(`<span class="tag neutral">${extra.note}</span>`);
+    if (st.bullAlign) t.push('<span class="tag bull">多頭排列</span>');
     if (st.bearAlign) t.push('<span class="tag bear">空頭排列</span>');
     if (st.slopeDown) t.push('<span class="tag bear">月線下彎</span>');
     if (extra && extra.volBreak) t.push('<span class="tag bear">量增跌破</span>');
+    if (extra && extra.volUp) t.push('<span class="tag bull">量增站上</span>');
     if (st.belowMA60) t.push('<span class="tag bear">破季線</span>');
     if (st.oversold) t.push('<span class="tag bull">RSI 超賣</span>');
     if (st.kdGolden) t.push('<span class="tag bull">KD 低檔金叉</span>');
@@ -359,6 +438,7 @@
     const subs = ignoreSubs ? [] : [...state.subs];
     return stocks.filter(st => {
       if (st.close == null || st.ma20[LAST] == null) return false;
+      if (!state.groups.has(st.grp)) return false;
       if ((st.vol20 || 0) < state.minVol) return false;
       if (!ignoreIndustry && !state.industries.has(st.ind)) return false;
       if (subs.length && !subs.some(k => st.subKeys.has(k))) return false;
@@ -370,26 +450,37 @@
 
   function computeRows() {
     const uni = baseUniverse(false);
-    if (state.mode === 'break') {
-      const L = state.weeks * 5;
-      const rows = [];
+    if (state.mode === 'break' || state.mode === 'up') {
+      const isUp = state.mode === 'up';
+      const n = isUp ? state.upMa : state.breakMa;
+      const days = isUp ? state.upDays : state.breakDays;
+      const baseIdx = Math.max(0, LAST - days);
+      let rows = [];
       for (const st of uni) {
-        const bi = findBreak(st, state.weeks);
-        if (bi < 0) continue;
-        if (state.stillBelow && !st.below) continue;
-        if (state.slopeDown && !st.slopeDown) continue;
-        const vr = breakVolRatio(st, bi);
-        const volBreak = vr != null && vr >= 1.5;
-        if (state.volBreak && !volBreak) continue;
-        if (state.dipOnly && !st.dip) continue;
-        const baseIdx = Math.max(0, LAST - L);
+        const ci = findMaCross(st, n, days, isUp ? 1 : -1);
+        if (ci < 0) continue;
+        const side = isUp ? isAbove(st, n) : isBelow(st, n);
+        if ((isUp ? state.stillAbove : state.stillBelow) && !side) continue;
+        const sl = maSlope(st, n);
+        if (isUp ? state.upSlope && !(sl > 0) : state.slopeDown && !(sl < 0)) continue;
+        const vr = volRatioAt(st, ci);
+        const volHit = vr != null && vr >= 1.5;
+        if ((isUp ? state.upVol : state.volBreak) && !volHit) continue;
+        if (!isUp && state.dipOnly && !st.dip) continue;
+        if (isUp && state.bullOnly && !st.bullAlign) continue;
         rows.push({
-          st, breakIdx: bi, breakDate: dates[bi], daysAgo: LAST - bi, volRatio: vr, volBreak,
-          reclaimed: !st.below,
+          st, crossIdx: ci, daysAgo: LAST - ci, volRatio: vr, volHit, side, bias: biasOf(st, n),
           periodChg: st.fc[baseIdx] ? st.close / st.fc[baseIdx] - 1 : null
         });
       }
-      return { uni, rows };
+      // break: deepest below the MA first; up: most recent cross first, then the strongest volume
+      rows.sort(isUp
+        ? (a, b2) => a.daysAgo - b2.daysAgo || (b2.volRatio ?? 0) - (a.volRatio ?? 0)
+        : (a, b2) => (a.bias ?? 0) - (b2.bias ?? 0));
+      const total = rows.length;
+      rows = rows.slice(0, state.topN);
+      rows.forEach((r, i) => (r.rank = i + 1));
+      return { uni, rows, total };
     }
     if (state.mode === 'inst') {
       if (instLast < 0) return { uni, rows: [], total: 0 };
@@ -410,34 +501,36 @@
       }
       rows.sort((a, b2) => b2.streak - a.streak || b2.cum - a.cum);
       const total = rows.length;
-      if (state.instTop) rows = rows.slice(0, 50);
+      rows = rows.slice(0, state.topN);
       rows.forEach((r, i) => (r.rank = i + 1));
       return { uni, rows, total };
     }
     if (state.mode === 'combo') {
-      const keys = ['macd', 'fi', 'drop', 'brk'].filter(k => state[COMBO_KEY[k]]);
+      const keys = COMBO_ORDER.filter(k => state[COMBO_KEY[k]]);
       const b = dropBaseIndex(state.cbDropBase);
-      const counts = { macd: 0, fi: 0, drop: 0, brk: 0, all: 0 };
+      const counts = { macd: 0, fi: 0, drop: 0, brk: 0, up: 0, all: 0 };
       let rows = uni.map(st => {
         const turn = findCross(st.osc, state.cbMacdWithin);
         const fiN = instLast >= 0 ? instStreak(st, 'fi').n : 0;
         const chg = st.fc[b] ? st.close / st.fc[b] - 1 : null;
-        const bi = findBreak(st, state.cbBreakWeeks);
+        const bi = findMaCross(st, state.cbBreakMa, state.cbBreakDays, -1);
+        const ui = findMaCross(st, state.cbUpMa, state.cbUpDays, 1);
         const ok = {
           macd: turn >= 0 && st.osc[LAST] > 0,
           fi: fiN >= state.cbFiDays,
           drop: chg != null && chg <= -state.cbDropThr / 100,
-          brk: bi >= 0 && st.below
+          brk: bi >= 0 && isBelow(st, state.cbBreakMa),
+          up: ui >= 0 && isAbove(st, state.cbUpMa)
         };
         for (const k of Object.keys(ok)) if (ok[k]) counts[k]++;
         const score = keys.filter(k => ok[k]).length;
         if (keys.length && score === keys.length) counts.all++;
-        return { st, ok, score, need: keys.length, turn, fiN, chg, breakIdx: bi };
+        return { st, ok, score, need: keys.length, turn, fiN, chg, breakIdx: bi, upIdx: ui };
       });
       rows = rows.filter(r => r.need > 0 && (state.comboMatch === 'all' ? r.score === r.need : r.score > 0));
       rows.sort((a, b2) => b2.score - a.score || (a.chg ?? 0) - (b2.chg ?? 0));
       const total = rows.length;
-      rows = rows.slice(0, state.cbTop);
+      rows = rows.slice(0, state.topN);
       rows.forEach((r, i) => (r.rank = i + 1));
       return { uni, rows, total, counts, keys, baseDate: dates[b] };
     }
@@ -463,7 +556,7 @@
       }[state.macdSort];
       rows.sort(by);
       const total = rows.length;
-      rows = rows.slice(0, 50);
+      rows = rows.slice(0, state.topN);
       rows.forEach((r, i) => (r.rank = i + 1));
       return { uni, rows, total };
     }
@@ -474,53 +567,66 @@
       const change = st.fc[b] ? st.close / st.fc[b] - 1 : null;
       const drawdown = peak > 0 ? st.close / peak - 1 : null;
       const metric = state.dropMetric === 'change' ? change : drawdown;
-      return { st, change, drawdown, metric, hit: metric != null && metric <= -state.threshold / 100, breakIdx: findBreak(st, 4) };
+      return { st, change, drawdown, metric, hit: metric != null && metric <= -state.threshold / 100, breakIdx: findMaCross(st, 20, 20, -1) };
     }).filter(r => r.metric != null);
     rows.sort((a, b2) => a.metric - b2.metric);
-    let top = rows.slice(0, 50);
+    let top = rows.slice(0, state.topN);
     if (state.onlyHit) top = top.filter(r => r.hit);
     top.forEach((r, i) => (r.rank = i + 1));
     return { uni, rows: top, allHits: rows.filter(r => r.hit).length, baseDate: dates[b] };
   }
 
   // ------------------------------------------------------------------ table
-  const COLS_BREAK = [
-    { k: 'name', t: '股票', l: true, v: r => r.st.code, h: r => `<span class="code">${r.st.code}</span><span class="name">${esc(r.st.name)}</span>` },
-    { k: 'ind', t: '產業', l: true, v: r => r.st.indName + (r.st.sub ? r.st.sub.label : ''), h: r => indCell(r.st) },
-    { k: 'close', t: '收盤', v: r => r.st.close, h: r => fmtP(r.st.close) },
-    { k: 'day', t: '日漲跌', v: r => r.st.dayChg, h: r => `<span class="${cls(r.st.dayChg)}">${fmtPct(r.st.dayChg)}</span>` },
-    { k: 'ma20', t: '月線', v: r => r.st.ma20[LAST], h: r => fmtP(r.st.ma20[LAST]) },
-    { k: 'bias', t: '月線乖離', v: r => r.st.bias, h: r => `<span class="${cls(r.st.bias)}">${fmtPct(r.st.bias)}</span>` },
-    { k: 'bd', t: '跌破日', v: r => r.breakIdx, h: r => md(r.breakDate) },
-    { k: 'ago', t: '距今(日)', v: r => r.daysAgo, h: r => r.daysAgo },
-    { k: 'pc', t: '期間漲跌', v: r => r.periodChg, h: r => `<span class="${cls(r.periodChg)}">${fmtPct(r.periodChg)}</span>` },
-    { k: 'vr', t: '破線量比', v: r => r.volRatio, h: r => (r.volRatio == null ? '–' : r.volRatio.toFixed(2) + 'x') },
-    { k: 'rsi', t: 'RSI14', v: r => r.st.rsiNow, h: r => (r.st.rsiNow == null ? '–' : r.st.rsiNow.toFixed(1)) },
-    { k: 'kd', t: 'K / D', v: r => r.st.kNow, h: r => (r.st.kNow == null ? '–' : `${r.st.kNow.toFixed(0)} / ${r.st.dNow.toFixed(0)}`) },
-    { k: 'vol', t: '20日均量', v: r => r.st.vol20, h: r => fmtInt(r.st.vol20) },
-    { k: 'sig', t: '技術訊號', l: true, v: r => (r.st.dip ? 1 : 0), h: r => signalTags(r.st, r) },
-    { k: 'celeb', t: '名人', l: true, v: r => r.st.mentions.length, h: r => celebBadges(r.st) },
-    { k: 'lnk', t: '連結', l: true, v: () => 0, h: r => `<span class="links">${links(r.st.code)}</span>` }
-  ];
-
-  const COLS_DROP = [
-    { k: 'rank', t: '#', v: r => r.rank, h: r => `<span class="rank">${r.rank}</span>` },
-    COLS_BREAK[0], COLS_BREAK[1], COLS_BREAK[2], COLS_BREAK[3],
-    { k: 'chg', t: '區間跌幅', v: r => r.change, h: r => `<span class="${cls(r.change)}">${fmtPct(r.change)}</span>` },
-    { k: 'dd', t: '高點回撤', v: r => r.drawdown, h: r => `<span class="${cls(r.drawdown)}">${fmtPct(r.drawdown)}</span>` },
-    COLS_BREAK[4], COLS_BREAK[5],
-    { k: 'bd', t: '4週內跌破月線', v: r => r.breakIdx, h: r => (r.breakIdx >= 0 ? md(dates[r.breakIdx]) : '<span class="flat">–</span>') },
-    COLS_BREAK[10], COLS_BREAK[11], COLS_BREAK[12],
-    { k: 'sig', t: '技術訊號', l: true, v: r => (r.st.dip ? 1 : 0), h: r => signalTags(r.st, { reclaimed: false }) },
-    COLS_BREAK[14], COLS_BREAK[15]
-  ];
-
-  const BK = Object.fromEntries(COLS_BREAK.map(c => [c.k, c]));
+  const pctCell = v => `<span class="${cls(v)}">${fmtPct(v)}</span>`;
+  const BK = {
+    name: { k: 'name', t: '股票', l: true, v: r => r.st.code, h: r => `<span class="code">${r.st.code}</span><span class="name">${esc(r.st.name)}</span>` },
+    ind: { k: 'ind', t: '產業', l: true, v: r => r.st.indName + (r.st.sub ? r.st.sub.label : ''), h: r => indCell(r.st) },
+    close: { k: 'close', t: '收盤', v: r => r.st.close, h: r => fmtP(r.st.close) },
+    day: { k: 'day', t: '日漲跌', v: r => r.st.dayChg, h: r => pctCell(r.st.dayChg) },
+    ma20: { k: 'ma20', t: '月線', v: r => r.st.ma20[LAST], h: r => fmtP(r.st.ma20[LAST]) },
+    bias: { k: 'bias', t: '月線乖離', v: r => r.st.bias, h: r => pctCell(r.st.bias) },
+    rsi: { k: 'rsi', t: 'RSI14', v: r => r.st.rsiNow, h: r => (r.st.rsiNow == null ? '–' : r.st.rsiNow.toFixed(1)) },
+    kd: { k: 'kd', t: 'K / D', v: r => r.st.kNow, h: r => (r.st.kNow == null ? '–' : `${r.st.kNow.toFixed(0)} / ${r.st.dNow.toFixed(0)}`) },
+    vol: { k: 'vol', t: '20日均量', v: r => r.st.vol20, h: r => fmtInt(r.st.vol20) },
+    celeb: { k: 'celeb', t: '名人', l: true, v: r => r.st.mentions.length, h: r => celebBadges(r.st) },
+    lnk: { k: 'lnk', t: '連結', l: true, v: () => 0, h: r => `<span class="links">${links(r.st.code)}</span>` }
+  };
+  const RANK = { k: 'rank', t: '#', v: r => r.rank, h: r => `<span class="rank">${r.rank}</span>` };
+  const SIG = { k: 'sig', t: '技術訊號', l: true, v: r => (r.st.dip ? 1 : 0), h: r => signalTags(r.st) };
   const fmtLots = v => (v == null ? '–' : (v > 0 ? '+' : '') + Math.round(v).toLocaleString('zh-TW'));
   const fmtM = v => (v == null ? '–' : Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(2));
   const lotsCell = v => `<span class="${cls(v)}">${fmtLots(v)}</span>`;
-  const RANK = COLS_DROP[0];
-  const SIG = { k: 'sig', t: '技術訊號', l: true, v: r => (r.st.dip ? 1 : 0), h: r => signalTags(r.st, { reclaimed: false }) };
+
+  // Break-below / move-above tables follow the MA picked in the controls (5 / 10 / 20 days).
+  function colsCross() {
+    const isUp = state.mode === 'up';
+    const n = isUp ? state.upMa : state.breakMa, nm = MA_NAME[n];
+    const extra = r => (isUp
+      ? { note: r.side ? null : `已跌回${nm}下`, volUp: r.volHit }
+      : { note: r.side ? null : `已站回${nm}`, volBreak: r.volHit });
+    return [
+      RANK, BK.name, BK.ind, BK.close, BK.day,
+      { k: 'ma', t: nm, v: r => maOf(r.st, n)[LAST], h: r => fmtP(maOf(r.st, n)[LAST]) },
+      { k: 'mb', t: nm + '乖離', v: r => r.bias, h: r => pctCell(r.bias) },
+      { k: 'cd', t: isUp ? '站上日' : '跌破日', v: r => r.crossIdx, h: r => md(dates[r.crossIdx]) },
+      { k: 'ago', t: '距今(日)', v: r => r.daysAgo, h: r => r.daysAgo },
+      { k: 'pc', t: '期間漲跌', v: r => r.periodChg, h: r => pctCell(r.periodChg) },
+      { k: 'vr', t: isUp ? '站上量比' : '破線量比', v: r => r.volRatio, h: r => (r.volRatio == null ? '–' : r.volRatio.toFixed(2) + 'x') },
+      ...(n === 20 ? [] : [BK.bias]),
+      BK.rsi, BK.kd, BK.vol,
+      { k: 'sig', t: '技術訊號', l: true, v: r => (r.st.dip ? 1 : 0), h: r => signalTags(r.st, extra(r)) },
+      BK.celeb, BK.lnk
+    ];
+  }
+
+  const COLS_DROP = [
+    RANK, BK.name, BK.ind, BK.close, BK.day,
+    { k: 'chg', t: '區間跌幅', v: r => r.change, h: r => pctCell(r.change) },
+    { k: 'dd', t: '高點回撤', v: r => r.drawdown, h: r => pctCell(r.drawdown) },
+    BK.ma20, BK.bias,
+    { k: 'bd', t: '4週內跌破月線', v: r => r.breakIdx, h: r => (r.breakIdx >= 0 ? md(dates[r.breakIdx]) : '<span class="flat">–</span>') },
+    BK.rsi, BK.kd, BK.vol, SIG, BK.celeb, BK.lnk
+  ];
 
   const COLS_INST = [
     RANK, BK.name, BK.ind, BK.close, BK.day,
@@ -548,30 +654,41 @@
   ];
 
   const hitCell = (ok, html) => `<span class="${ok ? 'met' : 'unmet'}">${ok ? '✓ ' : ''}${html}</span>`;
-  const COLS_COMBO = [
-    RANK, BK.name, BK.ind, BK.close, BK.day,
-    { k: 'score', t: '符合條件', v: r => r.score, h: r => `<b class="${r.score === r.need ? 'up' : ''}">${r.score} / ${r.need}</b>` },
-    { k: 'cm', t: 'MACD 翻正', v: r => (r.ok.macd ? -r.turn : null), h: r => hitCell(r.ok.macd, r.turn >= 0 ? md(dates[r.turn]) : '–') },
-    { k: 'cf', t: '外資連買', v: r => r.fiN, h: r => hitCell(r.ok.fi, r.fiN + ' 天') },
-    { k: 'cd', t: '月跌幅', v: r => r.chg, h: r => hitCell(r.ok.drop, fmtPct(r.chg)) },
-    { k: 'cb', t: '跌破月線', v: r => (r.ok.brk ? -r.breakIdx : null), h: r => hitCell(r.ok.brk, r.breakIdx >= 0 ? md(dates[r.breakIdx]) + (r.st.below ? '' : '（已站回）') : '–') },
-    BK.bias, BK.rsi, BK.vol, SIG, BK.celeb, BK.lnk
-  ];
+  function colsCombo() {
+    const bn = MA_NAME[state.cbBreakMa], un = MA_NAME[state.cbUpMa];
+    return [
+      RANK, BK.name, BK.ind, BK.close, BK.day,
+      { k: 'score', t: '符合條件', v: r => r.score, h: r => `<b class="${r.score === r.need ? 'up' : ''}">${r.score} / ${r.need}</b>` },
+      { k: 'cm', t: 'MACD 翻正', v: r => (r.ok.macd ? -r.turn : null), h: r => hitCell(r.ok.macd, r.turn >= 0 ? md(dates[r.turn]) : '–') },
+      { k: 'cf', t: '外資連買', v: r => r.fiN, h: r => hitCell(r.ok.fi, r.fiN + ' 天') },
+      { k: 'cd', t: '月跌幅', v: r => r.chg, h: r => hitCell(r.ok.drop, fmtPct(r.chg)) },
+      { k: 'cb', t: '跌破' + bn, v: r => (r.ok.brk ? -r.breakIdx : null),
+        h: r => hitCell(r.ok.brk, r.breakIdx >= 0 ? md(dates[r.breakIdx]) + (isBelow(r.st, state.cbBreakMa) ? '' : '（已站回）') : '–') },
+      { k: 'cu', t: '站上' + un, v: r => (r.ok.up ? -r.upIdx : null),
+        h: r => hitCell(r.ok.up, r.upIdx >= 0 ? md(dates[r.upIdx]) + (isAbove(r.st, state.cbUpMa) ? '' : '（已跌回）') : '–') },
+      BK.bias, BK.rsi, BK.vol, SIG, BK.celeb, BK.lnk
+    ];
+  }
 
-  const colsFor = mode => ({ break: COLS_BREAK, drop: COLS_DROP, inst: COLS_INST, macd: COLS_MACD, combo: COLS_COMBO }[mode]);
+  function colsFor(mode) {
+    if (mode === 'break' || mode === 'up') return colsCross();
+    if (mode === 'combo') return colsCombo();
+    return { drop: COLS_DROP, inst: COLS_INST, macd: COLS_MACD }[mode];
+  }
 
   function comboLabels() {
     return {
-      macd: `MACD 翻正（${state.cbMacdWithin === 1 ? '今日' : state.cbMacdWithin + ' 日內'}）`,
+      macd: `MACD 翻正（${daysLabel(state.cbMacdWithin)}）`,
       fi: `外資連買 ≥ ${state.cbFiDays} 天`,
       drop: `${state.cbDropBase === 'month' ? '本月' : '近 20 日'}跌幅 ≥ ${state.cbDropThr}%`,
-      brk: `${state.cbBreakWeeks} 週內跌破月線`
+      brk: `${daysLabel(state.cbBreakDays)}跌破${MA_NAME[state.cbBreakMa]}`,
+      up: `${daysLabel(state.cbUpDays)}站上${MA_NAME[state.cbUpMa]}`
     };
   }
 
   function renderComboStats(res) {
     const L = comboLabels();
-    const items = ['macd', 'fi', 'drop', 'brk'].map(k => {
+    const items = COMBO_ORDER.map(k => {
       const on = res.keys.includes(k);
       return `<span class="cstat ${on ? '' : 'off'}">${L[k]} <b>${res.counts[k]}</b> 檔</span>`;
     });
@@ -580,7 +697,13 @@
   }
 
   function tableTitle(res, n) {
-    if (state.mode === 'break') return `跌破月線（${state.weeks} 週內）：${n} 檔`;
+    const pick = by => (res.total > n ? `依${by}取前 ${n} 名` : `全部列出（依${by}排序）`);
+    if (state.mode === 'break') {
+      return `${daysLabel(state.breakDays)}跌破${MA_NAME[state.breakMa]}：符合 ${res.total} 檔，${pick(MA_NAME[state.breakMa] + '乖離（跌最深）')}`;
+    }
+    if (state.mode === 'up') {
+      return `${daysLabel(state.upDays)}站上${MA_NAME[state.upMa]}：符合 ${res.total} 檔，${pick('最新站上、量比大')}`;
+    }
     if (state.mode === 'drop') {
       const lbl = state.dropBase === 'month' ? `本月（基準 ${md(res.baseDate)} 收盤）` : `近 20 交易日（基準 ${md(res.baseDate)}）`;
       const m = state.dropMetric === 'change' ? '區間跌幅' : '高點回撤';
@@ -588,26 +711,25 @@
     }
     if (state.mode === 'inst') {
       if (instLast < 0) return '法人連續買超：尚無法人資料';
-      const shown = n < res.total ? `，顯示前 ${n} 名` : '';
-      return `${WHO[state.instWho]}連續買超 ≥ ${state.instDays} 天：${res.total} 檔${shown}（法人資料至 ${md(instDates[instLast])}）`;
+      return `${WHO[state.instWho]}連續買超 ≥ ${state.instDays} 天：符合 ${res.total} 檔，${pick('連買天數')}（法人資料至 ${md(instDates[instLast])}）`;
     }
     if (state.mode === 'combo') {
       if (!res.keys.length) return '多條件組合：請至少勾選一個條件';
       const L = comboLabels();
       const conds = res.keys.map(k => L[k]).join(' ＋ ');
       const how = state.comboMatch === 'all' ? '全部符合' : '至少符合一項';
-      return `多條件組合【${conds}】${how}：${res.total} 檔，依符合數取前 ${n} 名`;
+      return `多條件組合【${conds}】${how}：${res.total} 檔，${pick('符合數')}`;
     }
     const def = state.macdType === 'osc' ? '柱狀體翻紅' : 'DIF 突破 0 軸';
-    const within = state.macdWithin === 1 ? '今日' : `${state.macdWithin} 日內`;
+    const within = daysLabel(state.macdWithin);
     const sort = { strength: '柱狀體強度', recent: '最新翻正', volume: '成交量' }[state.macdSort];
-    return `MACD ${def}（${within}）：符合 ${res.total} 檔，依${sort}取前 ${n} 名`;
+    return `MACD ${def}（${within}）：符合 ${res.total} 檔，${pick(sort)}`;
   }
 
   function renderTable(res) {
     const cols = colsFor(state.mode);
     let rows = res.rows.slice();
-    const key = state.sortKey || (state.mode === 'break' ? 'bias' : 'rank');
+    const key = state.sortKey || 'rank';
     const col = cols.find(c => c.k === key) || cols[0];
     const dir = state.sortKey ? state.sortDir : 1;
     rows.sort((a, b) => {
@@ -650,15 +772,17 @@
     const dipN = res.rows.filter(r => r.st.dip).length;
     const avgBias = avg(res.rows.map(r => r.st.bias));
     const hitLbl = {
-      break: `${state.weeks} 週內跌破月線`,
+      break: `${daysLabel(state.breakDays)}跌破${MA_NAME[state.breakMa]}`,
+      up: `${daysLabel(state.upDays)}站上${MA_NAME[state.upMa]}`,
       drop: '排行檔數',
       inst: `${WHO[state.instWho]}連買 ≥ ${state.instDays} 天`,
-      macd: `${state.macdWithin === 1 ? '今日' : state.macdWithin + ' 日內'} MACD 翻正`,
+      macd: `${daysLabel(state.macdWithin)} MACD 翻正`,
       combo: state.comboMatch === 'all' ? '勾選條件全部符合' : '至少符合一項條件'
     }[state.mode];
     const hitN = res.total != null ? res.total : res.rows.length;
+    const grpNames = Object.keys(GROUPS).filter(g => state.groups.has(g)).map(g => GROUPS[g]).join('＋');
     const k = [
-      { lbl: '觀察母體（上市電子）', val: uni.length, sub: `均量 ≥ ${state.minVol.toLocaleString()} 張・已選 ${state.industries.size} 個產業${state.subs.size ? `・${state.subs.size} 個細產業` : ''}` },
+      { lbl: `觀察母體（上市${grpNames}）`, val: uni.length, sub: `均量 ≥ ${state.minVol.toLocaleString()} 張・已選 ${state.industries.size} 個產業${state.subs.size ? `・${state.subs.size} 個細產業` : ''}` },
       { lbl: hitLbl, val: hitN, sub: uni.length ? `占母體 ${(hitN / uni.length * 100).toFixed(1)}%` : '' },
       { lbl: '目前收盤在月線下', val: `${uni.length ? (belowN / uni.length * 100).toFixed(1) : 0}%`, sub: `${belowN} / ${uni.length} 檔` },
       { lbl: '結果平均月線乖離', val: avgBias == null ? '–' : fmtPct(avgBias, 1), sub: `低接觀察訊號 ${dipN} 檔`, c: cls(avgBias) },
@@ -670,12 +794,12 @@
   function renderBreadth(res) {
     const uni = baseUniverse(true);
     const rowCodes = new Set(res.rows.map(r => r.st.code));
-    const groups = Object.keys(IND).map(id => {
+    const groups = visibleCodes().map(id => {
       const g = uni.filter(s => s.ind === id);
       const below = g.filter(s => s.below).length;
       const hits = g.filter(s => rowCodes.has(s.code)).length;
-      return { id, name: IND[id], n: g.length, below, pct: g.length ? below / g.length : 0, hits };
-    }).sort((a, b) => b.pct - a.pct);
+      return { id, name: IND[id] || id, n: g.length, below, pct: g.length ? below / g.length : 0, hits };
+    }).filter(g => g.n).sort((a, b) => b.pct - a.pct);
     const overall = uni.length ? uni.filter(s => s.below).length / uni.length : 0;
     const solo = state.industries.size === 1 ? [...state.industries][0] : null;
     $('#breadth').innerHTML = groups.map(g => `
@@ -684,7 +808,7 @@
         <div class="bar"><i style="width:${(g.pct * 100).toFixed(1)}%"></i><b style="left:0;width:${(overall * 100).toFixed(1)}%"></b></div>
         <div class="num"><strong>${(g.pct * 100).toFixed(0)}%</strong>（${g.below}/${g.n}）・入選 ${g.hits}</div>
       </div>`).join('') +
-      `<p class="hint">綠條 = 該產業收盤在月線下的比例；金線 = 全體電子股平均 ${(overall * 100).toFixed(1)}%。</p>`;
+      `<p class="hint">綠條 = 該產業收盤在月線下的比例；金線 = 母體平均 ${(overall * 100).toFixed(1)}%。</p>`;
   }
 
   function seriesBias(arr) {
@@ -745,7 +869,7 @@
           <div class="pc-main">
             <div class="pc-name">${p.name} <span class="alias">${p.alias}</span></div>
             <div class="pc-style">${esc(p.style)}</div>
-            <div class="pc-meta">${p.posts.length} 則發表・最新 ${latest ? md(latest) : '–'}・提及上市電子股 ${watchList(p).length} 檔</div>
+            <div class="pc-meta">${p.posts.length} 則發表・最新 ${latest ? md(latest) : '–'}・提及上市股 ${watchList(p).length} 檔</div>
           </div>
           <span class="chev">${open ? '收合 ▴' : '展開 ▾'}</span>
         </button>`;
@@ -789,14 +913,14 @@
   }
 
   // ------------------------------------------------------------------ chart drawer
-  function chartSVG(st, breakIdx) {
+  function chartSVG(st, mark) {
     const n = Math.min(65, T), s0 = T - n;
     const W = 820, padL = 10, padR = 62, top = 14, priceH = 260, volTop = 290, volH = 70;
     const mTop = volTop + volH + 22, mH = 80, H = mTop + mH + 26;
     const cw = (W - padL - padR) / n;
     let hi = -Infinity, lo = Infinity, vmax = 0;
     for (let i = s0; i < T; i++) {
-      for (const x of [st.h[i], st.l[i], st.ma20[i], st.ma60[i], st.ma5[i]]) {
+      for (const x of [st.h[i], st.l[i], st.ma20[i], st.ma60[i], st.ma5[i], st.ma10[i]]) {
         if (x == null) continue;
         if (x > hi) hi = x;
         if (x < lo) lo = x;
@@ -832,11 +956,11 @@
       for (let i = s0; i < T; i++) if (arr[i] != null) pts.push(`${X(i).toFixed(1)},${Y(arr[i]).toFixed(1)}`);
       return pts.length ? `<polyline points="${pts.join(' ')}" fill="none" style="stroke:${color}" stroke-width="${w}"/>` : '';
     };
-    g += line(st.ma60, 'var(--ma60)', 1.2) + line(st.ma5, 'var(--ma5)', 1.2) + line(st.ma20, 'var(--ma20)', 2.2);
-    if (breakIdx >= s0) {
-      const x = X(breakIdx), y = Y(st.h[breakIdx]) - 8;
-      g += `<path d="M${x - 6},${y - 10} L${x + 6},${y - 10} L${x},${y} Z" style="fill:var(--mark)"/>`;
-      g += `<text x="${x}" y="${y - 14}" style="fill:var(--mark)" font-size="11" text-anchor="middle">跌破月線</text>`;
+    g += line(st.ma60, 'var(--ma60)', 1.2) + line(st.ma10, 'var(--ma10)', 1.2) + line(st.ma5, 'var(--ma5)', 1.2) + line(st.ma20, 'var(--ma20)', 2.2);
+    if (mark && mark.idx >= s0) {
+      const x = X(mark.idx), y = Y(st.h[mark.idx]) - 8, col = mark.up ? 'var(--up)' : 'var(--mark)';
+      g += `<path d="M${x - 6},${y - 10} L${x + 6},${y - 10} L${x},${y} Z" style="fill:${col}"/>`;
+      g += `<text x="${x}" y="${y - 14}" style="fill:${col}" font-size="11" text-anchor="middle">${mark.label}</text>`;
     }
     g += `<text x="${padL}" y="${volTop - 4}" style="fill:var(--chart-text)" font-size="11">成交量（張）最大 ${fmtInt(vmax)}</text>`;
 
@@ -869,7 +993,11 @@
   function openDrawer(code) {
     const st = byCode[code];
     if (!st) return;
-    const bi = findBreak(st, 4);
+    const bi = findMaCross(st, 20, 20, -1);
+    const mk = state.mode === 'up' ? { n: state.upMa, dir: 1 } : state.mode === 'break' ? { n: state.breakMa, dir: -1 } : { n: 20, dir: -1 };
+    const mi = findMaCross(st, mk.n, 20, mk.dir);
+    const mark = mi >= 0 ? { idx: mi, up: mk.dir > 0, label: (mk.dir > 0 ? '站上' : '跌破') + MA_NAME[mk.n] } : null;
+    const pos = n => (maOf(st, n)[LAST] == null ? '–' : isAbove(st, n) ? '<span class="up">線上</span>' : '<span class="down">線下</span>');
     const notes = st.mentions.map(m => `<li><span class="badge ${m.w}">${PEOPLE[m.w] ? PEOPLE[m.w].badge : ''}</span>${esc((PEOPLE[m.w] || {}).name || '')}：${esc(m.t)}</li>`).join('');
     const stats = [
       ['月線 (MA20)', fmtP(st.ma20[LAST])], ['月線乖離', `<span class="${cls(st.bias)}">${fmtPct(st.bias)}</span>`],
@@ -877,7 +1005,8 @@
       ['RSI(14)', st.rsiNow == null ? '–' : st.rsiNow.toFixed(1)], ['K / D', st.kNow == null ? '–' : `${st.kNow.toFixed(1)} / ${st.dNow.toFixed(1)}`],
       ['20 日均量', fmtInt(st.vol20) + ' 張'], ['4 週內跌破月線', bi >= 0 ? `${dates[bi]}（${LAST - bi} 日前）` : '無'],
       ['MACD DIF / DEA', `${fmtM(st.dif[LAST])} / ${fmtM(st.dea[LAST])}`], ['OSC 柱', `<span class="${cls(st.osc[LAST])}">${fmtM(st.osc[LAST])}</span>`],
-      ['外資連買', instLast >= 0 ? instStreak(st, 'fi').n + ' 天' : '–'], ['投信連買', instLast >= 0 ? instStreak(st, 'it').n + ' 天' : '–']
+      ['外資連買', instLast >= 0 ? instStreak(st, 'fi').n + ' 天' : '–'], ['投信連買', instLast >= 0 ? instStreak(st, 'it').n + ' 天' : '–'],
+      ['收盤 vs 5／10／20日線', `${pos(5)} / ${pos(10)} / ${pos(20)}`], ['均線排列', st.bullAlign ? '<span class="up">多頭</span>' : st.bearAlign ? '<span class="down">空頭</span>' : '糾結']
     ];
     let instTable = '';
     if (instLast >= 0 && st.fi) {
@@ -896,10 +1025,11 @@
         <span class="links">${links(st.code)}</span>
         <button class="btn small close" id="drClose">關閉 ✕</button>
       </div>
-      <div>${signalTags(st, { reclaimed: bi >= 0 && !st.below })}</div>
-      ${chartSVG(st, bi)}
+      <div>${signalTags(st, { note: bi >= 0 && !st.below ? '已站回月線' : null })}</div>
+      ${chartSVG(st, mark)}
       <div class="chart-legend">
         <span><i style="background:var(--ma5)"></i>MA5</span>
+        <span><i style="background:var(--ma10)"></i>MA10</span>
         <span><i style="background:var(--ma20);height:4px"></i>月線 MA20</span>
         <span><i style="background:var(--ma60)"></i>季線 MA60</span>
         <span><i style="background:var(--dif)"></i>DIF</span>
@@ -949,23 +1079,32 @@
     const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `electronics_${state.mode}_${dates[LAST]}.csv`;
+    a.download = `stocks_${state.mode}_${dates[LAST]}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   }
 
   // ------------------------------------------------------------------ controls
+  function renderGroupChecks() {
+    $('#grpChecks').innerHTML = Object.entries(GROUPS).map(([g, n]) => {
+      const cnt = stocks.filter(s => s.grp === g).length;
+      return `<label class="chk grp"><input type="checkbox" data-grp="${g}" ${state.groups.has(g) ? 'checked' : ''}> ${n} <small>${cnt}</small></label>`;
+    }).join('');
+  }
+
   function renderIndustryChips() {
-    $('#indChips').innerHTML = Object.entries(IND).map(([id, n]) => {
+    $('#indChips').innerHTML = visibleCodes().map(id => {
       const cnt = stocks.filter(s => s.ind === id).length;
-      return `<button class="chip ${state.industries.has(id) ? 'on' : ''}" data-ind="${id}">${n} <small>${cnt}</small></button>`;
+      return `<button class="chip ${state.industries.has(id) ? 'on' : ''}" data-ind="${id}">${IND[id] || id} <small>${cnt}</small></button>`;
     }).join('');
   }
 
   function renderSubChips() {
     const box = $('#subChips');
-    if (!SUB) { $('#subRow').classList.add('hidden'); return; }
-    const allInd = state.industries.size === Object.keys(IND).length;
+    const show = !!SUB && state.groups.has('elec');
+    $('#subRow').classList.toggle('hidden', !show);
+    if (!show) return;
+    const allInd = state.industries.size === visibleCodes().length;
     $('#subClear').classList.toggle('hidden', !state.subs.size);
     if (allInd && !state.subs.size) {
       box.innerHTML = '<span class="hint">先點選上方一個產業（例如「半導體業」），這裡會依產業價值鏈再細分，例如 IC設計 → 電源管理IC、晶圓製造、IC封裝測試、PCB 載板、被動元件…</span>';
@@ -1004,14 +1143,30 @@
   }
 
   function syncControls() {
-    $$('.tab').forEach(b => b.classList.toggle('active', b.dataset.mode === state.mode));
+    $$('.tab').forEach(b => {
+      b.classList.toggle('active', b.dataset.mode === state.mode);
+      b.textContent = `${b.dataset.label} Top ${state.topN}`;
+    });
     $('#ctlBreak').classList.toggle('hidden', state.mode !== 'break');
+    $('#ctlUp').classList.toggle('hidden', state.mode !== 'up');
     $('#ctlDrop').classList.toggle('hidden', state.mode !== 'drop');
     $('#ctlInst').classList.toggle('hidden', state.mode !== 'inst');
     $('#ctlMacd').classList.toggle('hidden', state.mode !== 'macd');
     $('#ctlCombo').classList.toggle('hidden', state.mode !== 'combo');
-    for (const id of ['cbMacd', 'cbFi', 'cbDrop', 'cbBreak']) $('#' + id).checked = state[id];
-    for (const id of ['cbMacdWithin', 'cbFiDays', 'cbDropBase', 'cbDropThr', 'cbBreakWeeks', 'cbTop']) $('#' + id).value = String(state[id]);
+    for (const id of NUM_CTLS.concat(['cbDropBase'])) $('#' + id).value = String(state[id]);
+    for (const id of Object.values(COMBO_KEY)) $('#' + id).checked = state[id];
+    $$('#segBreakMa button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.breakMa));
+    $$('#segBreakDays button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.breakDays));
+    $$('#segUpMa button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.upMa));
+    $$('#segUpDays button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.upDays));
+    $('#optAbove').checked = state.stillAbove;
+    $('#optUpSlope').checked = state.upSlope;
+    $('#optUpVol').checked = state.upVol;
+    $('#optBull').checked = state.bullOnly;
+    $('#lblBelow').textContent = `目前仍在${MA_NAME[state.breakMa]}下`;
+    $('#lblSlope').textContent = `${MA_NAME[state.breakMa]}下彎`;
+    $('#lblAbove').textContent = `目前仍在${MA_NAME[state.upMa]}上`;
+    $('#lblUpSlope').textContent = `${MA_NAME[state.upMa]}上揚`;
     $$('#segComboMatch button').forEach(b => b.classList.toggle('on', b.dataset.v === state.comboMatch));
     $$('#segWho button').forEach(b => b.classList.toggle('on', b.dataset.v === state.instWho));
     $$('#segDays button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.instDays));
@@ -1019,10 +1174,8 @@
     $$('#segMacdWithin button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.macdWithin));
     $$('#segMacdSort button').forEach(b => b.classList.toggle('on', b.dataset.v === state.macdSort));
     $('#optInstBelow').checked = state.instBelow;
-    $('#optInstTop').checked = state.instTop;
     $('#optMacdStill').checked = state.macdStill;
     $('#optMacdLow').checked = state.macdLow;
-    $$('#segWeeks button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.weeks));
     $$('#segBase button').forEach(b => b.classList.toggle('on', b.dataset.v === state.dropBase));
     $$('#segMetric button').forEach(b => b.classList.toggle('on', b.dataset.v === state.dropMetric));
     $('#optBelow').checked = state.stillBelow;
@@ -1034,6 +1187,7 @@
     $('#minVol').value = String(state.minVol);
     $('#thr').value = state.threshold;
     $('#thrVal').textContent = state.threshold + '%';
+    renderGroupChecks();
     renderIndustryChips();
     renderSubChips();
   }
@@ -1044,14 +1198,20 @@
     renderKpis(res);
     renderBreadth(res);
     renderTable(res);
+    saveState();
   }
+
+  const allIndustries = () => new Set(visibleCodes());
 
   function bind() {
     $$('.tab').forEach(b => b.addEventListener('click', () => {
       state.mode = b.dataset.mode; state.sortKey = null; update();
     }));
     const seg = (sel, fn) => $$(sel + ' button').forEach(b => b.addEventListener('click', () => { fn(b.dataset.v); update(); }));
-    seg('#segWeeks', v => (state.weeks = +v));
+    seg('#segBreakMa', v => (state.breakMa = +v));
+    seg('#segBreakDays', v => (state.breakDays = +v));
+    seg('#segUpMa', v => (state.upMa = +v));
+    seg('#segUpDays', v => (state.upDays = +v));
     seg('#segBase', v => (state.dropBase = v));
     seg('#segMetric', v => (state.dropMetric = v));
     seg('#segWho', v => (state.instWho = v));
@@ -1061,13 +1221,26 @@
     seg('#segMacdSort', v => { state.macdSort = v; state.sortKey = null; });
     const chk = (id, key) => $(id).addEventListener('change', e => { state[key] = e.target.checked; update(); });
     chk('#optInstBelow', 'instBelow');
-    chk('#optInstTop', 'instTop');
     chk('#optMacdStill', 'macdStill');
     chk('#optMacdLow', 'macdLow');
-    for (const id of ['cbMacd', 'cbFi', 'cbDrop', 'cbBreak']) chk('#' + id, id);
-    for (const id of ['cbMacdWithin', 'cbFiDays', 'cbDropThr', 'cbBreakWeeks', 'cbTop']) {
+    chk('#optAbove', 'stillAbove');
+    chk('#optUpSlope', 'upSlope');
+    chk('#optUpVol', 'upVol');
+    chk('#optBull', 'bullOnly');
+    for (const id of Object.values(COMBO_KEY)) chk('#' + id, id);
+    for (const id of NUM_CTLS) {
       $('#' + id).addEventListener('change', e => { state[id] = +e.target.value; update(); });
     }
+    $('#grpChecks').addEventListener('change', e => {
+      const g = e.target.dataset.grp;
+      if (!g) return;
+      if (e.target.checked) state.groups.add(g);
+      else if (state.groups.size > 1) state.groups.delete(g);
+      state.industries = allIndustries();
+      state.subs.clear();
+      state.subMore = false;
+      update();
+    });
     $('#cbDropBase').addEventListener('change', e => { state.cbDropBase = e.target.value; update(); });
     seg('#segComboMatch', v => (state.comboMatch = v));
     chk('#optBelow', 'stillBelow');
@@ -1080,15 +1253,15 @@
     $('#thr').addEventListener('input', e => { state.threshold = +e.target.value; update(); });
     $('#q').addEventListener('input', e => { state.query = e.target.value; update(); });
     $('#btnCsv').addEventListener('click', exportCsv);
-    $('#indAll').addEventListener('click', e => { e.preventDefault(); state.industries = new Set(Object.keys(IND)); state.subs.clear(); update(); });
+    $('#indAll').addEventListener('click', e => { e.preventDefault(); state.industries = allIndustries(); state.subs.clear(); update(); });
     $('#indChips').addEventListener('click', e => {
       const b = e.target.closest('.chip');
       if (!b) return;
       const id = b.dataset.ind;
-      if (state.industries.size === Object.keys(IND).length) state.industries = new Set([id]);
+      if (state.industries.size === visibleCodes().length) state.industries = new Set([id]);
       else if (state.industries.has(id)) state.industries.delete(id);
       else state.industries.add(id);
-      if (!state.industries.size) state.industries = new Set(Object.keys(IND));
+      if (!state.industries.size) state.industries = allIndustries();
       state.subs.clear();
       state.subMore = false;
       update();
@@ -1107,7 +1280,7 @@
       if (!r) return;
       const id = r.dataset.ind;
       const solo = state.industries.size === 1 && state.industries.has(id);
-      state.industries = solo ? new Set(Object.keys(IND)) : new Set([id]);
+      state.industries = solo ? allIndustries() : new Set([id]);
       state.subs.clear();
       update();
     });
@@ -1135,8 +1308,10 @@
       if (w) { openDrawer(w.dataset.code); return; }
       const p = e.target.closest('[data-preset]');
       if (p && PEOPLE[p.dataset.preset]) {
-        Object.assign(state, PEOPLE[p.dataset.preset].preset);
-        state.industries = new Set(Object.keys(IND));
+        const { weeks, ...preset } = PEOPLE[p.dataset.preset].preset;
+        Object.assign(state, preset);
+        if (weeks) { state.breakDays = weeks * 5; state.breakMa = 20; }
+        state.industries = allIndustries();
         state.subs.clear();
         state.sortKey = null;
         update();
