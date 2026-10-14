@@ -1,6 +1,6 @@
 {
-  "name": "電子類股篩選",
-  "short_name": "電子類股篩選",
+  "name": "台灣股票篩選器",
+  "short_name": "台灣股票篩選器",
   "start_url": "./index.html",
   "display": "browser",
   "background_color": "#ffffff",
