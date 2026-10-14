@@ -117,10 +117,10 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; }
 .brand h1 { margin: 0; font-size: 20px; letter-spacing: 1px; }
 .brand .sub { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
 .logo { display: flex; align-items: flex-end; gap: 3px; height: 28px; }
-.logo span { width: 7px; border-radius: 2px; background: var(--down); }
-.logo span:nth-child(1) { height: 26px; }
+.logo span { width: 7px; border-radius: 2px; background: linear-gradient(to top, var(--up) 55%, var(--gold)); }
+.logo span:nth-child(1) { height: 9px; }
 .logo span:nth-child(2) { height: 17px; }
-.logo span:nth-child(3) { height: 9px; }
+.logo span:nth-child(3) { height: 26px; }
 
 .market { display: flex; gap: 12px; flex: 1; flex-wrap: wrap; }
 .mkt {
