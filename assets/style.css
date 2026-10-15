@@ -9,7 +9,6 @@
   --up: #ef4444;
   --down: #22c55e;
   --gold: #f5b942;
-  --brand-ink: #d9ae45;
   --violet: #a78bfa;
   --chen: #f5b942;
   --yu: #38bdf8;
@@ -52,7 +51,6 @@
   --up: #dc2626;
   --down: #16a34a;
   --gold: #b7791f;
-  --brand-ink: #9e2421;
   --violet: #7c3aed;
   --chen: #c58a0a;
   --yu: #0284c7;
@@ -118,16 +116,8 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand h1 { margin: 0; font-size: 26px; line-height: 1.15; letter-spacing: 2px; }
 .brand .sub { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
-.logo { display: block; width: 50px; height: 50px; border-radius: 11px; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
-.maker { display: flex; align-items: center; gap: 5px; margin-top: 3px; }
-.maker img { width: 16px; height: 16px; }
-.maker span {
-  font-family: 'Noto Serif TC', 'Source Han Serif TC', 'PMingLiU', 'MingLiU', serif;
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 4px;
-  color: var(--brand-ink);
-}
+.logo { display: block; width: 58px; height: 58px; border-radius: 13px; box-shadow: 0 1px 4px rgba(0, 0, 0, .25); }
+.maker { display: block; height: 28px; width: auto; margin-top: 4px; }
 
 .market { display: flex; gap: 12px; flex: 1; flex-wrap: wrap; }
 .mkt {
@@ -403,7 +393,8 @@ tbody tr.hit { background: color-mix(in srgb, var(--down) 9%, transparent); }
 @media (max-width: 640px) {
   .topbar { padding: 10px 12px; }
   .brand h1 { font-size: 22px; }
-  .logo { width: 44px; height: 44px; }
+  .logo { width: 52px; height: 52px; }
+  .maker { height: 25px; }
   .meta { text-align: left; margin-left: 0; }
   .mkt { min-width: 0; flex-basis: 100%; }
   main { padding: 10px 10px 40px; }
