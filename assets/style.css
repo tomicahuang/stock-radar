@@ -419,7 +419,10 @@ tbody tr.hit { background: color-mix(in srgb, var(--down) 9%, transparent); }
 }
 .ev.ex { color: var(--tag-bull); background: var(--tag-bull-bg); border-color: var(--tag-bull-b); }
 .ev.pay { color: var(--tag-dip); background: var(--tag-dip-bg); border-color: var(--tag-dip-b); }
+.ev.buy { color: var(--tag-neu); background: var(--tag-neu-bg); border-color: var(--tag-neu-b); }
 .ev.est { border-style: dashed; opacity: .75; }
+.cal .dn .cb { color: var(--accent); font-weight: 700; }
+.buy-today { color: var(--on-accent); background: var(--up); border-radius: 4px; padding: 0 4px; }
 .ev.more { color: var(--muted); padding: 0 2px; }
 .cal-head { margin: 12px 0 6px; }
 .cal-table { max-height: 420px; }

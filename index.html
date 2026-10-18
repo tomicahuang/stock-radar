@@ -64,6 +64,40 @@
         <button class="tab" data-mode="inst" data-label="法人連買">法人連買 Top 50</button>
         <button class="tab" data-mode="macd" data-label="MACD 翻正">MACD 翻正 Top 50</button>
         <button class="tab" data-mode="combo" data-label="多條件組合">多條件組合 Top 50</button>
+        <button class="tab" data-mode="div" data-label="除權息">除權息 Top 50</button>
+      </div>
+
+      <div class="ctl-row hidden" id="ctlDiv">
+        <div class="ctl">
+          <label>除權息日在</label>
+          <div class="seg" id="segDivWithin">
+            <button data-v="7">7 天內</button>
+            <button data-v="14">14 天內</button>
+            <button data-v="30" class="on">30 天內</button>
+            <button data-v="90">90 天內</button>
+            <button data-v="400">一年內</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>類別</label>
+          <div class="seg" id="segDivType">
+            <button data-v="all" class="on">全部</button>
+            <button data-v="cash">有配息</button>
+            <button data-v="stock">有除權（配股／現增）</button>
+          </div>
+        </div>
+        <div class="ctl">
+          <label>排序依據</label>
+          <div class="seg" id="segDivSort">
+            <button data-v="date" class="on">最快除權息</button>
+            <button data-v="yield">本次現金殖利率</button>
+            <button data-v="ttm">近 12 月殖利率</button>
+          </div>
+        </div>
+        <div class="ctl checks">
+          <label class="chk"><input type="checkbox" id="optDivAnn"> 只看已公告（不含依過去規律預估）</label>
+          <label class="chk"><input type="checkbox" id="optDivCanBuy" checked> 只看還來得及買</label>
+        </div>
       </div>
 
       <div class="hidden" id="ctlCombo">
@@ -482,12 +516,14 @@
             <div class="seg mini" id="segCalShow">
               <button data-v="ex" class="on">除息日</button>
               <button data-v="pay">發放日</button>
-              <button data-v="both">兩者</button>
+              <button data-v="both">除息＋發放</button>
+              <button data-v="buy">最慢買進日</button>
             </div>
           </div>
         </div>
         <div class="cal-legend hint">
-          <span class="ev ex">除息</span> 這天以前買進才領得到
+          <span class="ev buy">最慢買進</span> 這天收盤前買進就領得到（除息日前一個交易日）
+          <span class="ev ex">除息</span> 這天才買就領不到了
           <span class="ev pay">發放</span> 錢入帳的日子
           <span class="ev ex est">虛線</span> 依過去配息規律預估，尚未公告
           ・點日期只看當天，再點一次看整月；行事曆跟著上方篩選（月份與 30 天內條件除外）
@@ -523,6 +559,8 @@
           <li>本月跌幅 = 最新收盤 ÷ 上月最後一個交易日收盤 − 1；區間高點回撤 = 最新收盤 ÷ 區間最高收盤 − 1。</li>
           <li>ETF：證交所「ETF e添富」的商品清單（規模、受益人數、上市日、投信、追蹤指數，以及股票型／債券型／原物料、槓桿／反向、主動式、高股息等官方分類）與「配息清單」（近兩年的除息交易日、收益分配發放日、配息金額，含已公告尚未除息者），另併入證交所「除權除息預告表」（TWT48U）。只含上市 ETF，上櫃 ETF（如部分債券 ETF）不在內；海外／國內是依 ETF 名稱與追蹤指數判斷。</li>
           <li>ETF 配息頻率：依近 400 天的除息間隔判斷（約 1 個月＝月配、3 個月＝季配、6 個月＝半年配、1 年＝年配）。近 12 月殖利率 = 近 365 天已除息的配息合計 ÷ 最新收盤；年化殖利率 = 最近一次配息 × 每年配息次數 ÷ 最新收盤（新上市未滿一年的 ETF 看這個較準）。下次除息若尚未公告，依最近一次除息日加上配息間隔預估（金額沿用上一次，標示「預估」）。填息 = 除息後收盤回到除息前一日收盤。</li>
+          <li>個股除權息：證交所「除權除息計算結果表」（TWT49U，近 13 個月的除權息日、除權息前收盤、權值＋息值）與「除權除息預告表」（TWT48U，已公告的除權息日、現金股利、配股率、現金增資）。尚未公告的下一次依過去間隔推估（多數股票一年一次、台積電等季配），金額沿用上一次，標示「預估」。近 12 月殖利率 = 近 365 天現金股利合計 ÷ 最新收盤（除權息同時發生時只計已公告的現金股利）。</li>
+          <li>最慢買進日 = 除權息日的前一個交易日（跳過週末與證交所公告的休市日）；台股 T+2 交割，這天收盤前買進仍可參加除權息，除權息當天才買就領不到。</li>
           <li>本頁僅為技術面篩選工具，名人觀點為公開報導摘要，皆不構成投資建議；ETF 配息率不代表報酬率，過去配息不代表未來配息。</li>
         </ul>
       </details>
@@ -545,6 +583,7 @@
   <script src="data/stocks-data.js"></script>
   <script src="data/subindustry.js"></script>
   <script src="data/etf-data.js"></script>
+  <script src="data/dividend-data.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>

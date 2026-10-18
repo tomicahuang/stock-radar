@@ -19,7 +19,7 @@
   const DAYS_LABEL = { 1: '今日', 3: '3 日內', 5: '1 週內', 10: '2 週內', 20: '4 週內' };
   const daysLabel = d => DAYS_LABEL[d] || `${d} 日內`;
   const TOP_CHOICES = [30, 50, 100];
-  const MODES = ['break', 'up', 'drop', 'inst', 'macd', 'combo'];
+  const MODES = ['break', 'up', 'drop', 'inst', 'macd', 'combo', 'div'];
   const PEOPLE = Object.fromEntries((CELEB.people || []).map(p => [p.id, p]));
   const SUB = window.SUB_IND && window.SUB_IND.groups ? window.SUB_IND : null;
   // Product value chains used for the sub-industry chips; theme chains (AI, cloud…) only show in the drawer.
@@ -106,6 +106,11 @@
     cbUpMa: 5,
     cbUpDays: 5,
     comboMatch: 'score',
+    divWithin: 30,
+    divType: 'all',
+    divSort: 'date',
+    divAnnOnly: false,
+    divCanBuy: true,
     openCeleb: null,
     sortKey: null,
     sortDir: 1
@@ -536,6 +541,29 @@
       rows.forEach((r, i) => (r.rank = i + 1));
       return { uni, rows, total, counts, keys, baseDate: dates[b] };
     }
+    if (state.mode === 'div') {
+      let rows = [];
+      for (const st of uni) {
+        const n = st.sNext;
+        if (!n || (state.divAnnOnly && n.est)) continue;
+        const days = dayDiff(TODAY, n.ex), buy = lastBuyDay(n.ex);
+        if (days > state.divWithin || (state.divCanBuy && buy < TODAY)) continue;
+        if (state.divType === 'cash' && !n.type.includes('息')) continue;
+        if (state.divType === 'stock' && !n.type.includes('權')) continue;
+        const cash = divCash(n);
+        rows.push({ st, n, days, buy, cash, cy: cash != null ? cash / st.close : null });
+      }
+      const by = {
+        date: (a, b2) => a.days - b2.days || (b2.cy ?? -1) - (a.cy ?? -1),
+        yield: (a, b2) => (b2.cy ?? -1) - (a.cy ?? -1),
+        ttm: (a, b2) => (b2.st.sYield ?? -1) - (a.st.sYield ?? -1)
+      }[state.divSort];
+      rows.sort(by);
+      const total = rows.length;
+      rows = rows.slice(0, state.topN);
+      rows.forEach((r, i) => (r.rank = i + 1));
+      return { uni, rows, total };
+    }
     if (state.mode === 'macd') {
       const line = state.macdType === 'osc' ? 'osc' : 'dif';
       let rows = [];
@@ -672,10 +700,25 @@
     ];
   }
 
+  const COLS_DIV = [
+    RANK, BK.name, BK.ind, BK.close, BK.day,
+    { k: 'ex', t: '除權息日', v: r => r.days,
+      h: r => `<span class="${r.n.est ? 'flat' : 'up'}">${md(r.n.ex)}${r.n.est ? ' 預估' : ''}</span><span class="sub-name">${r.days} 天後</span>` },
+    { k: 'buy', t: '最慢買進日', v: r => r.buy, h: r => buyCell(r.n.ex, r.n.est) },
+    { k: 'type', t: '類別', l: true, v: r => r.n.type, h: r => divTypeTag(r.n) },
+    { k: 'cash', t: '現金股利', v: r => r.cash,
+      h: r => (r.cash == null ? `<span class="flat">${r.n.est || !r.n.type.includes('息') ? '–' : '待公告'}</span>` : `${r.n.est ? '約 ' : ''}${fmtAmt(r.cash)} 元`) },
+    { k: 'sr', t: '配股／現增', l: true, v: r => r.n.sr || r.n.ir || 0, h: r => stockPart(r.n) },
+    { k: 'cy', t: '本次現金殖利率', v: r => r.cy, h: r => `<b class="${r.cy ? 'up' : 'flat'}">${fmtYield(r.cy)}</b>` },
+    { k: 'ttm', t: '近12月殖利率', v: r => r.st.sYield, h: r => fmtYield(r.st.sYield) },
+    { k: 'last', t: '上次除權息・填權息', v: r => (r.st.sLast ? r.st.sLast.ex : null), h: r => lastStockCell(r.st) },
+    BK.bias, BK.vol, SIG, BK.celeb, BK.lnk
+  ];
+
   function colsFor(mode) {
     if (mode === 'break' || mode === 'up') return colsCross();
     if (mode === 'combo') return colsCombo();
-    return { drop: COLS_DROP, inst: COLS_INST, macd: COLS_MACD }[mode];
+    return { drop: COLS_DROP, inst: COLS_INST, macd: COLS_MACD, div: COLS_DIV }[mode];
   }
 
   function comboLabels() {
@@ -714,6 +757,11 @@
     if (state.mode === 'inst') {
       if (instLast < 0) return '法人連續買超：尚無法人資料';
       return `${WHO[state.instWho]}連續買超 ≥ ${state.instDays} 天：符合 ${res.total} 檔，${pick('連買天數')}（法人資料至 ${md(instDates[instLast])}）`;
+    }
+    if (state.mode === 'div') {
+      const sort = { date: '最快除權息', yield: '本次現金殖利率', ttm: '近 12 月殖利率' }[state.divSort];
+      const w = state.divWithin >= 400 ? '一年內' : `${state.divWithin} 天內`;
+      return `${w}除權息（${state.divAnnOnly ? '只看已公告' : '含依規律預估'}${state.divCanBuy ? '・還來得及買' : ''}）：符合 ${res.total} 檔，${pick(sort)}`;
     }
     if (state.mode === 'combo') {
       if (!res.keys.length) return '多條件組合：請至少勾選一個條件';
@@ -779,7 +827,8 @@
       drop: '排行檔數',
       inst: `${WHO[state.instWho]}連買 ≥ ${state.instDays} 天`,
       macd: `${daysLabel(state.macdWithin)} MACD 翻正`,
-      combo: state.comboMatch === 'all' ? '勾選條件全部符合' : '至少符合一項條件'
+      combo: state.comboMatch === 'all' ? '勾選條件全部符合' : '至少符合一項條件',
+      div: `${state.divWithin >= 400 ? '一年內' : state.divWithin + ' 天內'}除權息`
     }[state.mode];
     const hitN = res.total != null ? res.total : res.rows.length;
     const grpNames = Object.keys(GROUPS).filter(g => state.groups.has(g)).map(g => GROUPS[g]).join('＋');
@@ -1008,8 +1057,21 @@
       ['20 日均量', fmtInt(st.vol20) + ' 張'], ['4 週內跌破月線', bi >= 0 ? `${dates[bi]}（${LAST - bi} 日前）` : '無'],
       ['MACD DIF / DEA', `${fmtM(st.dif[LAST])} / ${fmtM(st.dea[LAST])}`], ['OSC 柱', `<span class="${cls(st.osc[LAST])}">${fmtM(st.osc[LAST])}</span>`],
       ['外資連買', instLast >= 0 ? instStreak(st, 'fi').n + ' 天' : '–'], ['投信連買', instLast >= 0 ? instStreak(st, 'it').n + ' 天' : '–'],
-      ['收盤 vs 5／10／20日線', `${pos(5)} / ${pos(10)} / ${pos(20)}`], ['均線排列', st.bullAlign ? '<span class="up">多頭</span>' : st.bearAlign ? '<span class="down">空頭</span>' : '糾結']
+      ['收盤 vs 5／10／20日線', `${pos(5)} / ${pos(10)} / ${pos(20)}`], ['均線排列', st.bullAlign ? '<span class="up">多頭</span>' : st.bearAlign ? '<span class="down">空頭</span>' : '糾結'],
+      ['下次除權息', st.sNext ? `${st.sNext.ex} ${DIV_TYPE[st.sNext.type] || st.sNext.type}${st.sNext.est ? '（預估）' : ''}` : '近一年無紀錄'],
+      ['最慢買進日', st.sNext ? buyCell(st.sNext.ex, st.sNext.est) : '–'],
+      ['近 12 月現金股利', st.sTtm == null ? '–' : fmtAmt(st.sTtm) + ' 元'], ['近 12 月殖利率', fmtYield(st.sYield)]
     ];
+    const divRows = st.sdivs.slice().reverse().map(x => `<tr><td class="l">${md(lastBuyDay(x.ex))}</td><td class="l">${x.ex}</td>
+      <td class="l">${divTypeTag(x)}</td><td>${divCash(x) == null ? (x.val != null ? `權值+息值 ${fmtAmt(x.val)}` : '待公告') : fmtAmt(divCash(x)) + ' 元'}</td>
+      <td class="l">${stockPart(x)}</td><td class="l">${x.ex > TODAY ? '<span class="up">已公告</span>' : fillText(fillOf(st, x.ex, x.pre || undefined))}</td></tr>`);
+    if (st.sNext && st.sNext.est) {
+      divRows.unshift(`<tr><td class="l">${md(lastBuyDay(st.sNext.ex))}</td><td class="l">${st.sNext.ex}</td><td class="l">${divTypeTag(st.sNext)}</td>
+        <td>${st.sNext.cash == null ? '–' : '約 ' + fmtAmt(st.sNext.cash) + ' 元'}</td><td class="l">–</td><td class="l"><span class="flat">依規律預估</span></td></tr>`);
+    }
+    const divTable = divRows.length ? `<h3>除權息紀錄（近 13 個月，含已公告與預估）</h3>
+      <div class="table-wrap mini"><table><thead><tr><th class="l">最慢買進</th><th class="l">除權息日</th><th class="l">類別</th><th>現金股利</th><th class="l">配股／現增</th><th class="l">填權息／狀態</th></tr></thead>
+      <tbody>${divRows.join('')}</tbody></table></div>` : '';
     let instTable = '';
     if (instLast >= 0 && st.fi) {
       const js = [];
@@ -1040,6 +1102,7 @@
       </div>
       <div class="stats">${stats.map(([a, b]) => `<div class="stat"><div class="lbl">${a}</div><div class="val">${b}</div></div>`).join('')}</div>
       ${chainLines(st)}
+      ${divTable}
       ${instTable}
       ${notes ? `<h3>名人觀點</h3><ul class="notes">${notes}</ul>` : ''}`;
     $('#drawer').classList.add('show');
@@ -1096,14 +1159,82 @@
   }
   const dateIdx = Object.fromEntries(dates.map((d, i) => [d, i]));
 
+  // ------------------------------------------------------------------ last buy day, stock ex-rights / ex-dividend
+  const DIV = window.DIV_DATA && window.DIV_DATA.events ? window.DIV_DATA : null;
+  const HOLI = new Set((DIV && DIV.holidays) || []);
+  const isTradingDay = s => { const w = toDate(s).getDay(); return w !== 0 && w !== 6 && !HOLI.has(s); };
+  // T+2 settlement: buying on the trading day before the ex-date still gets the payout.
+  function lastBuyDay(ex) {
+    let s = addDays(ex, -1);
+    for (let i = 0; i < 20 && !isTradingDay(s); i++) s = addDays(s, -1);
+    return s;
+  }
+  function buyCell(ex, est) {
+    const b = lastBuyDay(ex), n = dayDiff(TODAY, b);
+    const when = n < 0 ? '已來不及' : n === 0 ? '今天收盤前' : `還有 ${n} 天`;
+    return `<b class="${n === 0 ? 'buy-today' : n < 0 ? 'flat' : 'up'}">${md(b)}（${'日一二三四五六'[toDate(b).getDay()]}）</b>${est ? ' <span class="flat">預估</span>' : ''}<span class="sub-name">${when}</span>`;
+  }
+  const DIV_TYPE = { 息: '除息', 權: '除權', 權息: '除權息' };
+  const divCash = x => x.cash ?? (x.type === '息' ? x.val : null);
+  const divTypeTag = x => `<span class="tag ${x.type.includes('權') ? 'inst' : 'dip'}">${DIV_TYPE[x.type] || x.type}</span>`;
+  function stockPart(x) {
+    const parts = [];
+    if (x.sr) parts.push(`配股 每千股 ${Math.round(x.sr * 1000)} 股`);
+    if (x.ir) parts.push(`現增 每千股 ${Math.round(x.ir * 1000)} 股${x.ip ? `・認購 ${fmtAmt(x.ip)} 元` : ''}`);
+    return parts.length ? parts.join('<br>') : '<span class="flat">–</span>';
+  }
+  function lastStockCell(st) {
+    const x = st.sLast;
+    if (!x) return '<span class="flat">–</span>';
+    const v = divCash(x) ?? x.val;
+    const d = x.ex.slice(0, 4) === TODAY.slice(0, 4) ? md(x.ex) : x.ex.slice(2).replace(/-/g, '/');
+    return `${d} ${DIV_TYPE[x.type] || x.type}${v != null ? `・${fmtAmt(v)} 元` : ''}<span class="sub-name">${fillText(st.sFill)}</span>`;
+  }
+
+  const divByStock = {};
+  if (DIV) {
+    for (const [c, ex, type, cash, sr, ir, ip, pre, val, ann] of DIV.events) {
+      (divByStock[c] = divByStock[c] || []).push({ ex, type, cash, sr, ir, ip, pre, val, ann: !!ann, est: false });
+    }
+  }
+  function stockDivStats(st) {
+    const ds = (divByStock[st.code] || []).sort((a, b) => (a.ex < b.ex ? -1 : a.ex > b.ex ? 1 : 0));
+    st.sdivs = ds;
+    const past = ds.filter(x => x.ex <= TODAY);
+    st.sLast = past.length ? past[past.length - 1] : null;
+    st.sFill = st.sLast ? fillOf(st, st.sLast.ex, st.sLast.pre || undefined) : null;
+    const ttm = past.filter(x => dayDiff(x.ex, TODAY) < 365).map(divCash).filter(v => v != null);
+    st.sTtm = ttm.length ? ttm.reduce((a, b) => a + b, 0) : null;
+    st.sYield = st.sTtm ? st.sTtm / st.close : null;
+    // only cash dividends recur on a schedule; rights issues and stock dividends are one-offs
+    const recent = past.filter(x => x.type.includes('息') && dayDiff(x.ex, TODAY) <= 400);
+    const gaps = [];
+    for (let i = 1; i < recent.length; i++) gaps.push(dayDiff(recent[i - 1].ex, recent[i].ex));
+    const g = median(gaps.filter(x => x > 5));
+    st.sFreq = g == null ? (recent.length ? 1 : 0) : g <= 45 ? 12 : g <= 135 ? 4 : g <= 240 ? 2 : 1;
+    st.sNext = ds.find(x => x.ex > TODAY) || null;
+    const anchor = recent[recent.length - 1];
+    if (!st.sNext && anchor && st.sFreq) {
+      let ex = anchor.ex;
+      for (let k = 0; k < 24 && ex <= TODAY; k++) ex = addMonths(ex, 12 / st.sFreq);
+      for (let k = 0; k < 7 && !isTradingDay(ex); k++) ex = addDays(ex, 1);
+      if (ex > TODAY && dayDiff(TODAY, ex) <= 400) {
+        st.sNext = { ex, type: '息', cash: divCash(anchor), sr: null, ir: null, ip: null, est: true, ann: false };
+      }
+    }
+  }
+  for (const st of stocks) stockDivStats(st);
+
   // Official asset / reward types first; domestic vs. overseas is judged from the ETF name and its index.
   function etfType(e) {
     if (e.rw === 'L' || e.rw === 'I') return 'lev';
     if (e.cat === 'bond') return 'bond';
     if (e.cat && e.cat !== 'stock') return 'other';
     if (e.tags.some(t => t.includes('高股息') || t.includes('高息')) || /息/.test(e.n)) return 'hi';
-    const idx = (e.idx || '').replace(/臺灣指數公司/g, '');
-    if (FOREIGN_NAME.test(e.n) || (idx && !DOMESTIC_IDX.test(idx) && FOREIGN_IDX.test(idx))) return 'intl';
+    const raw = e.idx || '', tip = raw.startsWith('臺灣指數公司'), idx = raw.replace(/臺灣指數公司/g, '');
+    // TIP (Taiwan Index Plus) indices often carry English words, so only Chinese overseas keywords count for them
+    const idxForeign = idx && !DOMESTIC_IDX.test(idx) && (tip ? FOREIGN_NAME.test(idx) : FOREIGN_IDX.test(idx));
+    if (FOREIGN_NAME.test(e.n) || (!/台灣|臺灣/.test(e.n) && idxForeign)) return 'intl';
     return 'dom';
   }
 
@@ -1116,8 +1247,8 @@
     return p >= 0 ? st.raw[p] : null;
   }
   // Has the price come back to the pre-ex-date close? (raw closes, not adjusted)
-  function fillOf(st, ex) {
-    const pre = closeBefore(st, ex), i = dateIdx[ex];
+  function fillOf(st, ex, pre = closeBefore(st, ex)) {
+    const i = dateIdx[ex];
     if (pre == null || i == null) return null;
     let t = i;
     while (t <= LAST && !(st.raw[t] != null && st.raw[t] >= pre)) t++;
@@ -1316,6 +1447,8 @@
       { k: 'fwd', t: '年化殖利率', v: r => r.st.fwd, h: r => fmtYield(r.st.fwd) },
       { k: 'last', t: '最近除息・填息', v: r => (r.st.last ? r.st.last.ex : null), h: r => lastCell(r.st) },
       { k: 'next', t: '下次除息', v: r => r.st.nextDays, h: r => nextCell(r.st) },
+      { k: 'buy', t: '最慢買進日', v: r => (r.st.next ? lastBuyDay(r.st.next.ex) : null),
+        h: r => (r.st.next ? buyCell(r.st.next.ex, r.st.next.est) : '<span class="flat">–</span>') },
       { k: 'pay', t: '下次發放', v: r => (r.st.next ? r.st.next.pay : null), h: r => payCell(r.st) },
       { k: 'aum', t: '規模(億)', v: r => r.st.etf.aum, h: r => fmtInt(r.st.etf.aum) },
       { k: 'holders', t: '受益人數', v: r => r.st.etf.holders, h: r => fmtInt(r.st.etf.holders) },
@@ -1361,13 +1494,15 @@
     const soon = (n, official) => uni.filter(st => st.nextDays != null && st.nextDays <= n && !(official && st.next.est))
       .sort((a, b) => a.nextDays - b.nextDays);
     const s7 = soon(7, true), s30 = soon(30, false), s30o = s30.filter(st => !st.next.est);
+    const s7buy = s7.filter(st => lastBuyDay(st.next.ex) >= TODAY);
     const ym = TODAY.slice(0, 7);
     const payThis = uni.filter(st => st.divs.some(x => x.pay.slice(0, 7) === ym && !x.payEst));
     const ys = res.all.map(st => st.yield).filter(x => x != null && x > 0);
     const med = median(ys);
     const k = [
       { lbl: '觀察母體（上市 ETF）', val: uni.length, sub: `共 ${etfs.length} 檔・均量 ≥ ${etfState.minVol.toLocaleString()} 張・已選 ${etfState.types.size} 類` },
-      { lbl: '7 天內除息（已公告）', val: s7.length, sub: s7.length ? '最近：' + s7.slice(0, 3).map(st => `${md(st.next.ex)} ${st.code}`).join('、') : '這週沒有' },
+      { lbl: '7 天內除息（已公告）', val: s7.length,
+        sub: !s7.length ? '這週沒有' : s7buy.length ? `還來得及買 ${s7buy.length} 檔，最近一檔最慢 ${md(lastBuyDay(s7buy[0].next.ex))} 買` : '最慢買進日都已過' },
       { lbl: '30 天內除息', val: s30.length, sub: `已公告 ${s30o.length} 檔・預估 ${s30.length - s30o.length} 檔` },
       { lbl: `本月（${+ym.slice(5)} 月）發放`, val: payThis.length, sub: '依已公告的收益分配發放日' },
       { lbl: '排行結果殖利率中位數', val: med == null ? '–' : fmtYield(med), sub: `近 12 月有配息 ${ys.length} / ${res.total} 檔`, c: med ? 'up' : '' }
@@ -1380,6 +1515,11 @@
     for (const st of uni) {
       for (const x of st.divs.concat(st.projected)) {
         const yld = x.amt == null ? null : x.amt / (closeBefore(st, x.ex) || st.close);
+        if (show === 'buy') {
+          const b = lastBuyDay(x.ex);
+          if (b.slice(0, 7) === ym) out.push({ st, x, kind: 'buy', date: b, est: x.est, yld });
+          continue;
+        }
         if (show !== 'pay' && x.ex.slice(0, 7) === ym) out.push({ st, x, kind: 'ex', date: x.ex, est: x.est, yld });
         if (show !== 'ex' && x.pay.slice(0, 7) === ym) out.push({ st, x, kind: 'pay', date: x.pay, est: x.payEst, yld });
       }
@@ -1393,19 +1533,21 @@
     const nDays = new Date(y, m, 0).getDate(), lead = new Date(y, m - 1, 1).getDay();
     const byDay = {};
     for (const e of evs) (byDay[e.date] = byDay[e.date] || []).push(e);
-    const nEx = evs.filter(e => e.kind === 'ex').length, nPay = evs.length - nEx;
-    $('#calTitle').textContent = `${y} 年 ${m} 月配息行事曆：` +
-      [etfState.calShow !== 'pay' ? `除息 ${nEx} 檔次` : '', etfState.calShow !== 'ex' ? `發放 ${nPay} 檔次` : ''].filter(Boolean).join('・');
+    const nEx = evs.filter(e => e.kind === 'ex').length, nPay = evs.filter(e => e.kind === 'pay').length;
+    const KIND = { ex: '除息', pay: '發放', buy: '最慢買進' };
+    $('#calTitle').textContent = `${y} 年 ${m} 月配息行事曆：` + (etfState.calShow === 'buy' ? `最慢買進 ${evs.length} 檔次` :
+      [etfState.calShow !== 'pay' ? `除息 ${nEx} 檔次` : '', etfState.calShow !== 'ex' ? `發放 ${nPay} 檔次` : ''].filter(Boolean).join('・'));
     let cells = ['日', '一', '二', '三', '四', '五', '六'].map((w, i) => `<div class="wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`).join('');
     for (let i = 0; i < lead; i++) cells += '<div class="day out"></div>';
     for (let d = 1; d <= nDays; d++) {
       const ds = `${ym}-${pad2(d)}`, list = byDay[ds] || [], wd = (lead + d - 1) % 7;
-      const ex = list.filter(e => e.kind === 'ex').length, pay = list.length - ex;
+      const ex = list.filter(e => e.kind === 'ex').length, pay = list.filter(e => e.kind === 'pay').length;
+      const buy = list.filter(e => e.kind === 'buy').length;
       const chips = list.slice(0, 4).map(e =>
-        `<span class="ev ${e.kind}${e.est ? ' est' : ''}" title="${esc(`${e.st.code} ${e.st.name}：${e.kind === 'ex' ? '除息' : '發放'}${e.est ? '（預估）' : ''} ${fmtAmt(e.x.amt)} 元`)}">${e.st.code}</span>`).join('');
+        `<span class="ev ${e.kind}${e.est ? ' est' : ''}" title="${esc(`${e.st.code} ${e.st.name}：${KIND[e.kind]}${e.est ? '（預估）' : ''} ${fmtAmt(e.x.amt)} 元・除息 ${md(e.x.ex)}`)}">${e.st.code}</span>`).join('');
       const cls2 = [ds === TODAY ? 'today' : '', etfState.calDay === ds ? 'sel' : '', list.length ? 'has' : '', wd === 0 ? 'sun' : wd === 6 ? 'sat' : ''].join(' ');
       cells += `<div class="day ${cls2}" data-day="${ds}">
-        <div class="dn"><span>${d}</span><span class="cnt">${ex ? `<b class="cx">除${ex}</b>` : ''}${pay ? `<b class="cp">發${pay}</b>` : ''}</span></div>
+        <div class="dn"><span>${d}</span><span class="cnt">${buy ? `<b class="cb">買${buy}</b>` : ''}${ex ? `<b class="cx">除${ex}</b>` : ''}${pay ? `<b class="cp">發${pay}</b>` : ''}</span></div>
         <div class="evs">${chips}${list.length > 4 ? `<span class="ev more">+${list.length - 4}</span>` : ''}</div>
       </div>`;
     }
@@ -1421,13 +1563,14 @@
     const body = rows.map(e => `
       <tr data-code="${e.st.code}">
         <td class="l">${md(e.date)}</td>
-        <td class="l"><span class="ev ${e.kind}${e.est ? ' est' : ''}">${e.kind === 'ex' ? '除息' : '發放'}</span></td>
+        <td class="l"><span class="ev ${e.kind}${e.est ? ' est' : ''}">${KIND[e.kind]}</span></td>
         <td class="l"><span class="code">${e.st.code}</span><span class="name">${esc(e.st.name)}</span></td>
         <td class="l">${typeTag(e.st)}</td>
         <td>${e.x.amt == null ? '<span class="flat">待公告</span>' : `${e.x.est ? '約 ' : ''}${fmtAmt(e.x.amt)} 元`}</td>
         <td>${fmtYield(e.yld)}</td>
         <td>${freqText(e.st)}</td>
         <td>${fmtYield(e.yld != null && e.st.freq ? e.yld * e.st.freq : null)}</td>
+        <td>${buyCell(e.x.ex, e.x.est)}</td>
         <td>${md(e.x.ex)}${e.x.est ? ' 預估' : ''}</td>
         <td>${md(e.x.pay)}${e.x.payEst ? ' 預估' : ''}</td>
         <td class="l">${e.x.est ? '<span class="flat">依規律預估</span>' : e.x.ex <= TODAY ? '<span class="flat">已除息</span>' : e.x.amt == null ? '<span class="up">已公告日期</span>' : '<span class="up">已公告</span>'}</td>
@@ -1435,7 +1578,7 @@
     $('#calList').innerHTML = `<div class="hint cal-head">${head}</div>
       <div class="table-wrap cal-table"><table><thead><tr>
         <th class="l">日期</th><th class="l">事件</th><th class="l">ETF</th><th class="l">類型</th><th>配息金額</th><th>單次殖利率</th>
-        <th>頻率</th><th>年化</th><th>除息日</th><th>發放日</th><th class="l">狀態</th>
+        <th>頻率</th><th>年化</th><th>最慢買進日</th><th>除息日</th><th>發放日</th><th class="l">狀態</th>
       </tr></thead><tbody>${body}</tbody></table></div>`;
   }
 
@@ -1450,7 +1593,8 @@
       ['類型', typeTag(st)], ['配息頻率', freqText(st)],
       ['近 12 月配息', st.ttm == null ? '–' : `${fmtAmt(st.ttm)} 元（${st.ttmN} 次）`], ['近 12 月殖利率', `<span class="up">${fmtYield(st.yield)}</span>`],
       ['年化殖利率', fmtYield(st.fwd)], ['最近除息填息', fillText(st.fill)],
-      ['下次除息', nx ? `${nx.ex}${nx.est ? '（預估）' : ''}` : '–'], ['下次發放', nx ? `${nx.pay}${nx.payEst ? '（預估）' : ''}` : '–'],
+      ['下次除息', nx ? `${nx.ex}${nx.est ? '（預估）' : ''}` : '–'], ['最慢買進日', nx ? buyCell(nx.ex, nx.est) : '–'],
+      ['下次發放', nx ? `${nx.pay}${nx.payEst ? '（預估）' : ''}` : '–'], ['下次配息金額', nx ? (nx.amt == null ? '待公告' : `${nx.est ? '約 ' : ''}${fmtAmt(nx.amt)} 元`) : '–'],
       ['規模', fmtInt(e.aum) + ' 億元'], ['受益人數', fmtInt(e.holders) + ' 人'],
       ['上市日', e.list || '–'], ['投信', esc(e.iss || '–')],
       ['月線乖離', `<span class="${cls(st.bias)}">${fmtPct(st.bias)}</span>`], ['RSI(14)', st.rsiNow == null ? '–' : st.rsiNow.toFixed(1)],
@@ -1460,7 +1604,7 @@
       const pre = closeBefore(st, x.ex);
       const f = x.ex <= TODAY && !x.est ? fillOf(st, x.ex) : null;
       const status = x.est ? '<span class="flat">依規律預估</span>' : x.ex > TODAY ? '<span class="up">已公告</span>' : fillText(f);
-      return `<tr><td class="l">${x.ex}</td><td class="l">${x.pay}${x.payEst ? ' 預估' : ''}</td>
+      return `<tr><td class="l">${md(lastBuyDay(x.ex))}</td><td class="l">${x.ex}</td><td class="l">${x.pay}${x.payEst ? ' 預估' : ''}</td>
         <td>${x.amt == null ? '待公告' : (x.est ? '約 ' : '') + fmtAmt(x.amt) + ' 元'}</td>
         <td>${x.amt == null ? '–' : fmtYield(x.amt / (pre || st.close)) + (pre ? '' : ' <small class="flat">(以現價)</small>')}</td>
         <td class="l">${status}</td></tr>`;
@@ -1486,7 +1630,7 @@
       </div>
       <div class="stats">${stats.map(([a, b]) => `<div class="stat"><div class="lbl">${a}</div><div class="val">${b}</div></div>`).join('')}</div>
       <h3>配息紀錄（近兩年，含已公告與預估）</h3>
-      ${hist ? `<div class="table-wrap mini"><table><thead><tr><th class="l">除息日</th><th class="l">發放日</th><th>配息金額</th><th>單次殖利率</th><th class="l">填息／狀態</th></tr></thead><tbody>${hist}</tbody></table></div>` : '<p class="hint">近兩年沒有配息紀錄。</p>'}
+      ${hist ? `<div class="table-wrap mini"><table><thead><tr><th class="l">最慢買進</th><th class="l">除息日</th><th class="l">發放日</th><th>配息金額</th><th>單次殖利率</th><th class="l">填息／狀態</th></tr></thead><tbody>${hist}</tbody></table></div>` : '<p class="hint">近兩年沒有配息紀錄。</p>'}
       ${notes ? `<h3>名人觀點</h3><ul class="notes">${notes}</ul>` : ''}`;
     $('#drawer').classList.add('show');
     $('#backdrop').classList.add('show');
@@ -1701,6 +1845,12 @@
     $('#ctlInst').classList.toggle('hidden', state.mode !== 'inst');
     $('#ctlMacd').classList.toggle('hidden', state.mode !== 'macd');
     $('#ctlCombo').classList.toggle('hidden', state.mode !== 'combo');
+    $('#ctlDiv').classList.toggle('hidden', state.mode !== 'div');
+    $$('#segDivWithin button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.divWithin));
+    $$('#segDivType button').forEach(b => b.classList.toggle('on', b.dataset.v === state.divType));
+    $$('#segDivSort button').forEach(b => b.classList.toggle('on', b.dataset.v === state.divSort));
+    $('#optDivAnn').checked = state.divAnnOnly;
+    $('#optDivCanBuy').checked = state.divCanBuy;
     for (const id of NUM_CTLS.concat(['cbDropBase'])) $('#' + id).value = String(state[id]);
     for (const id of Object.values(COMBO_KEY)) $('#' + id).checked = state[id];
     $$('#segBreakMa button').forEach(b => b.classList.toggle('on', +b.dataset.v === state.breakMa));
@@ -1767,6 +1917,9 @@
     seg('#segMacdType', v => (state.macdType = v));
     seg('#segMacdWithin', v => (state.macdWithin = +v));
     seg('#segMacdSort', v => { state.macdSort = v; state.sortKey = null; });
+    seg('#segDivWithin', v => (state.divWithin = +v));
+    seg('#segDivType', v => (state.divType = v));
+    seg('#segDivSort', v => { state.divSort = v; state.sortKey = null; });
     const chk = (id, key) => $(id).addEventListener('change', e => { state[key] = e.target.checked; update(); });
     chk('#optInstBelow', 'instBelow');
     chk('#optMacdStill', 'macdStill');
@@ -1775,6 +1928,8 @@
     chk('#optUpSlope', 'upSlope');
     chk('#optUpVol', 'upVol');
     chk('#optBull', 'bullOnly');
+    chk('#optDivAnn', 'divAnnOnly');
+    chk('#optDivCanBuy', 'divCanBuy');
     for (const id of Object.values(COMBO_KEY)) chk('#' + id, id);
     for (const id of NUM_CTLS) {
       $('#' + id).addEventListener('change', e => { state[id] = +e.target.value; update(); });
