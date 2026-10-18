@@ -234,7 +234,8 @@
   };
 
   // ------------------------------------------------------------------ precompute
-  const stocks = DATA.stocks.map(s => {
+  // s = { c, n, i, o, h, l, cl, v, d, fi?, it?, dl? } with arrays aligned to DATA.dates (stocks and ETFs share this)
+  function prep(s) {
     const f = adjustFactors(s.cl, s.d);
     const adj = arr => arr.map((v, i) => (v == null ? null : v * f[i]));
     const c = adj(s.cl);
@@ -274,7 +275,8 @@
     st.subKeys = new Set(st.groups.filter(g => g.core).map(g => g.key));
     st.sub = primarySub(s.i, st.groups);
     return st;
-  });
+  }
+  const stocks = DATA.stocks.map(prep);
   const byCode = Object.fromEntries(stocks.map(s => [s.code, s]));
   let instLast = -1;
   for (let j = instDates.length - 1; j >= 0 && instLast < 0; j--) {
@@ -853,8 +855,8 @@
   // ------------------------------------------------------------------ celebrity cards
   function watchList(p) {
     return Object.entries(CELEB.mentions || {})
-      .filter(([code, arr]) => arr.some(m => m.w === p.id) && byCode[code])
-      .map(([code]) => byCode[code])
+      .filter(([code, arr]) => arr.some(m => m.w === p.id) && anyCode(code))
+      .map(([code]) => anyCode(code))
       .sort((a, b) => (a.bias ?? 0) - (b.bias ?? 0));
   }
 
@@ -869,7 +871,7 @@
           <div class="pc-main">
             <div class="pc-name">${p.name} <span class="alias">${p.alias}</span></div>
             <div class="pc-style">${esc(p.style)}</div>
-            <div class="pc-meta">${p.posts.length} 則發表・最新 ${latest ? md(latest) : '–'}・提及上市股 ${watchList(p).length} 檔</div>
+            <div class="pc-meta">${p.posts.length} 則發表・最新 ${latest ? md(latest) : '–'}・提及上市股／ETF ${watchList(p).length} 檔</div>
           </div>
           <span class="chev">${open ? '收合 ▴' : '展開 ▾'}</span>
         </button>`;
@@ -992,7 +994,7 @@
 
   function openDrawer(code) {
     const st = byCode[code];
-    if (!st) return;
+    if (!st) { openEtfDrawer(code); return; }
     const bi = findMaCross(st, 20, 20, -1);
     const mk = state.mode === 'up' ? { n: state.upMa, dir: 1 } : state.mode === 'break' ? { n: state.breakMa, dir: -1 } : { n: 20, dir: -1 };
     const mi = findMaCross(st, mk.n, 20, mk.dir);
@@ -1062,6 +1064,552 @@
   function closeDrawer() {
     $('#drawer').classList.remove('show');
     $('#backdrop').classList.remove('show');
+  }
+
+  // ------------------------------------------------------------------ ETF view
+  const EDATA = window.ETF_DATA && window.ETF_DATA.etfs ? window.ETF_DATA : null;
+  const ETF_TYPES = { dom: '國內股票', hi: '高股息', intl: '海外股票', bond: '債券', lev: '槓桿・反向', other: '原物料・REITs・其他' };
+  const ETF_TYPE_TAG = { dom: 'neutral', hi: 'dip', intl: 'inst', bond: 'bear', lev: 'bull', other: 'muted' };
+  const FREQ_NAME = { 12: '月配', 6: '雙月配', 4: '季配', 2: '半年配', 1: '年配', 0: '不配息' };
+  const ETF_SORTS = ['yield', 'fwd', 'next', 'aum', 'holders', 'vol', 'chg'];
+  const ETF_TOPS = [30, 50, 100, 999];
+  const FOREIGN_NAME = /美國|美股|美債|北美|美元|日本|日經|東證|中國|大陸|滬|深証|深證|上証|上證|恒生|香港|港股|韓國|印度|越南|歐洲|德國|英國|澳洲|東協|東南亞|亞太|亞洲|亞半|全球|國際|世界|新興|那斯達克|NASDAQ|納斯達克|標普|S&P|費城|道瓊|FANG|A50/i;
+  const FOREIGN_IDX = /[A-Za-z]{3,}|美國|全球|日本|中國|亞洲|歐洲|印度|越南|國際|世界|香港|韓國/;
+  const DOMESTIC_IDX = /臺灣|台灣|櫃買|臺指|Taiwan|TWSE|TPEx/i;
+  const pad2 = n => String(n).padStart(2, '0');
+  const ymd = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const TODAY = ymd(new Date());
+  const toDate = s => new Date(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+  const addDays = (s, n) => { const d = toDate(s); d.setDate(d.getDate() + n); return ymd(d); };
+  function addMonths(s, n) {
+    const d = toDate(s), day = d.getDate();
+    d.setDate(1);
+    d.setMonth(d.getMonth() + n);
+    d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+    return ymd(d);
+  }
+  const dayDiff = (a, b) => Math.round((toDate(b) - toDate(a)) / 864e5);
+  function median(a) {
+    if (!a.length) return null;
+    const s = a.slice().sort((x, y) => x - y), m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+  const dateIdx = Object.fromEntries(dates.map((d, i) => [d, i]));
+
+  // Official asset / reward types first; domestic vs. overseas is judged from the ETF name and its index.
+  function etfType(e) {
+    if (e.rw === 'L' || e.rw === 'I') return 'lev';
+    if (e.cat === 'bond') return 'bond';
+    if (e.cat && e.cat !== 'stock') return 'other';
+    if (e.tags.some(t => t.includes('高股息') || t.includes('高息')) || /息/.test(e.n)) return 'hi';
+    const idx = (e.idx || '').replace(/臺灣指數公司/g, '');
+    if (FOREIGN_NAME.test(e.n) || (idx && !DOMESTIC_IDX.test(idx) && FOREIGN_IDX.test(idx))) return 'intl';
+    return 'dom';
+  }
+
+  // Close on the trading day before `ex` (inside the price window), else null.
+  function closeBefore(st, ex) {
+    const i = dateIdx[ex];
+    if (i == null) return null;
+    let p = i - 1;
+    while (p >= 0 && st.raw[p] == null) p--;
+    return p >= 0 ? st.raw[p] : null;
+  }
+  // Has the price come back to the pre-ex-date close? (raw closes, not adjusted)
+  function fillOf(st, ex) {
+    const pre = closeBefore(st, ex), i = dateIdx[ex];
+    if (pre == null || i == null) return null;
+    let t = i;
+    while (t <= LAST && !(st.raw[t] != null && st.raw[t] >= pre)) t++;
+    return { pre, done: t <= LAST, days: (t <= LAST ? t : LAST) - i, gap: st.close / pre - 1 };
+  }
+
+  function etfDividendStats(st) {
+    const ds = st.divs, e = st.etf;
+    const listedDays = e.list ? dayDiff(e.list, TODAY) : 9999;
+    const recent = ds.filter(x => dayDiff(x.ex, TODAY) <= 400);
+    const gaps = [];
+    for (let i = 1; i < recent.length; i++) gaps.push(dayDiff(recent[i - 1].ex, recent[i].ex));
+    const g = median(gaps.filter(x => x > 5));
+    if (g != null) st.freq = g <= 45 ? 12 : g <= 75 ? 6 : g <= 135 ? 4 : g <= 240 ? 2 : 1;
+    else if (recent.length === 1) st.freq = listedDays > 400 ? 1 : null;
+    else st.freq = listedDays > 400 ? 0 : null;
+    const past = ds.filter(x => x.ex <= TODAY && x.amt != null);
+    const ttm = past.filter(x => dayDiff(x.ex, TODAY) < 365);
+    st.ttmN = ttm.length;
+    st.ttm = ttm.length ? ttm.reduce((s, x) => s + x.amt, 0) : st.freq === 0 ? 0 : null;
+    st.yield = st.ttm ? st.ttm / st.close : st.ttm === 0 ? 0 : null;
+    st.last = past.length ? past[past.length - 1] : null;
+    st.fwd = st.last && st.freq ? st.last.amt * st.freq / st.close : null;
+    st.fill = st.last ? fillOf(st, st.last.ex) : null;
+    st.payLag = Math.round(median(ds.filter(x => x.pay).map(x => dayDiff(x.ex, x.pay)).filter(x => x > 0 && x < 90)) ?? 21);
+    for (const x of ds) { x.est = false; x.payEst = !x.pay; if (!x.pay) x.pay = addDays(x.ex, st.payLag); }
+    // not yet announced: project from the usual interval, amount = last known payout
+    st.projected = [];
+    const anchor = ds.length ? ds[ds.length - 1] : null;
+    if (st.freq && anchor && st.last) {
+      let ex = anchor.ex;
+      for (let k = 0; k < 24; k++) {
+        ex = addMonths(ex, 12 / st.freq);
+        if (dayDiff(TODAY, ex) > 120) break;
+        if (ex <= TODAY) continue;
+        st.projected.push({ ex, pay: addDays(ex, st.payLag), amt: anchor.amt ?? st.last.amt, est: true, payEst: true });
+      }
+    }
+    const future = ds.filter(x => x.ex > TODAY);
+    st.next = future[0] || st.projected[0] || null;
+    st.nextDays = st.next ? dayDiff(TODAY, st.next.ex) : null;
+    const lo = addDays(TODAY, -365);
+    st.monthsEx = new Set(ds.filter(x => x.ex > lo).map(x => +x.ex.slice(5, 7)));
+    st.monthsPay = new Set(ds.filter(x => x.ex > lo).map(x => +x.pay.slice(5, 7)));
+    st.chg20 = st.fc[LAST - 20] ? st.close / st.fc[LAST - 20] - 1 : null;
+  }
+
+  const etfs = [];
+  if (EDATA) {
+    const map = EDATA.dates.map(d => dateIdx[d] ?? -1);
+    const align = a => {
+      const out = new Array(T).fill(null);
+      if (a) a.forEach((v, j) => { if (map[j] >= 0) out[map[j]] = v; });
+      return out;
+    };
+    const divBy = {};
+    for (const [c, ex, rec, pay, amt] of EDATA.divs || []) (divBy[c] = divBy[c] || []).push({ ex, rec: rec || null, pay: pay || null, amt });
+    for (const e of EDATA.etfs) {
+      if (!e.cl) continue;
+      const st = prep({ c: e.c, n: e.n, i: 'ETF', o: align(e.o), h: align(e.h), l: align(e.l), cl: align(e.cl), v: align(e.v), d: align(e.d) });
+      if (st.close == null) continue;
+      st.etf = e;
+      st.type = etfType(e);
+      st.divs = (divBy[e.c] || []).sort((a, b) => (a.ex < b.ex ? -1 : a.ex > b.ex ? 1 : 0));
+      etfDividendStats(st);
+      etfs.push(st);
+    }
+  }
+  const etfByCode = Object.fromEntries(etfs.map(s => [s.code, s]));
+  const anyCode = code => byCode[code] || etfByCode[code];
+
+  const etfState = {
+    view: 'stock',
+    types: new Set(Object.keys(ETF_TYPES)),
+    freq: 'all',
+    sort: 'yield',
+    months: new Set(),
+    monthBy: 'ex',
+    topN: 50,
+    minVol: 100,
+    query: '',
+    active: false,
+    soon: false,
+    celebOnly: false,
+    calShow: 'ex',
+    calMonth: TODAY.slice(0, 7),
+    calDay: null,
+    sortKey: null,
+    sortDir: 1
+  };
+  const ETF_SAVE_KEY = 'stock-radar-etf-v1';
+  const ETF_SAVE_SKIP = new Set(['query', 'calMonth', 'calDay', 'sortKey', 'sortDir']);
+  function saveEtfState() {
+    try {
+      const o = {};
+      for (const [k, v] of Object.entries(etfState)) if (!ETF_SAVE_SKIP.has(k)) o[k] = v instanceof Set ? [...v] : v;
+      localStorage.setItem(ETF_SAVE_KEY, JSON.stringify(o));
+    } catch (e) { /* settings just are not kept */ }
+  }
+  (function loadEtfState() {
+    let o = null;
+    try { o = JSON.parse(localStorage.getItem(ETF_SAVE_KEY) || 'null'); } catch (e) { o = null; }
+    if (o && typeof o === 'object') {
+      for (const [k, v] of Object.entries(o)) {
+        if (!(k in etfState) || ETF_SAVE_SKIP.has(k)) continue;
+        const cur = etfState[k];
+        if (cur instanceof Set) { if (Array.isArray(v)) etfState[k] = new Set(v); }
+        else if (typeof cur === typeof v) etfState[k] = v;
+      }
+    }
+    etfState.types = new Set([...etfState.types].filter(t => ETF_TYPES[t]));
+    if (!etfState.types.size) etfState.types = new Set(Object.keys(ETF_TYPES));
+    etfState.months = new Set([...etfState.months].filter(m => m >= 1 && m <= 12));
+    if (!ETF_SORTS.includes(etfState.sort)) etfState.sort = 'yield';
+    if (!ETF_TOPS.includes(etfState.topN)) etfState.topN = 50;
+    if (etfState.view !== 'etf') etfState.view = 'stock';
+  })();
+
+  function etfUniverse() {
+    const q = etfState.query.trim().toLowerCase();
+    return etfs.filter(st => {
+      if (!etfState.types.has(st.type)) return false;
+      if (etfState.freq !== 'all' && st.freq !== +etfState.freq) return false;
+      if ((st.vol20 || 0) < etfState.minVol) return false;
+      if (etfState.active && !st.etf.act) return false;
+      if (etfState.celebOnly && !st.mentions.length) return false;
+      if (q && ![st.code, st.name, st.etf.iss || '', st.etf.idx || '', ETF_TYPES[st.type]].some(x => x.toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }
+
+  function etfRows(uni) {
+    const ms = [...etfState.months];
+    const all = uni.filter(st => {
+      const set = etfState.monthBy === 'pay' ? st.monthsPay : st.monthsEx;
+      if (ms.length && !ms.some(m => set.has(m))) return false;
+      if (etfState.soon && !(st.nextDays != null && st.nextDays <= 30)) return false;
+      return true;
+    });
+    const by = {
+      yield: (a, b) => (b.yield ?? -1) - (a.yield ?? -1),
+      fwd: (a, b) => (b.fwd ?? -1) - (a.fwd ?? -1),
+      next: (a, b) => (a.nextDays ?? 9999) - (b.nextDays ?? 9999) || (b.fwd ?? -1) - (a.fwd ?? -1),
+      aum: (a, b) => (b.etf.aum ?? 0) - (a.etf.aum ?? 0),
+      holders: (a, b) => (b.etf.holders ?? 0) - (a.etf.holders ?? 0),
+      vol: (a, b) => (b.vol20 ?? 0) - (a.vol20 ?? 0),
+      chg: (a, b) => (b.chg20 ?? -9) - (a.chg20 ?? -9)
+    }[etfState.sort];
+    all.sort(by);
+    return { all, total: all.length, rows: all.slice(0, etfState.topN).map((st, i) => ({ st, rank: i + 1 })) };
+  }
+
+  const freqText = st => (st.freq == null ? (st.divs.length ? '未滿一年' : '尚未配息') : FREQ_NAME[st.freq]);
+  function monthText(set) {
+    const a = [...set].sort((x, y) => x - y);
+    return a.length === 12 ? '每月' : a.length ? a.join('・') + ' 月' : '–';
+  }
+  const mstrip = set => `<span class="mstrip" title="${monthText(set)}">${Array.from({ length: 12 }, (_, i) => `<i class="${set.has(i + 1) ? 'on' : ''}"></i>`).join('')}</span>`;
+  const fmtAmt = v => (v == null ? '–' : (+v).toFixed(v >= 1 ? 2 : 3).replace(/\.?0+$/, ''));
+  const fmtYield = v => (v == null ? '–' : (v * 100).toFixed(2) + '%');
+  const typeTag = st => `<span class="tag ${ETF_TYPE_TAG[st.type]}">${ETF_TYPES[st.type]}</span>${st.etf.act ? '<span class="tag muted">主動式</span>' : ''}`;
+  const etfMonths = st => (etfState.monthBy === 'pay' ? st.monthsPay : st.monthsEx);
+  const etfLinks = code =>
+    `<a href="https://tw.stock.yahoo.com/quote/${code}.TW/dividend" target="_blank" rel="noopener" title="Yahoo股市 配息">Y</a>` +
+    `<a href="https://www.twse.com.tw/zh/ETFortune/etfInfo/${code}" target="_blank" rel="noopener" title="證交所 ETF e添富">e</a>` +
+    `<a href="https://goodinfo.tw/tw/StockDividendPolicy.asp?STOCK_ID=${code}" target="_blank" rel="noopener" title="Goodinfo 股利政策">G</a>`;
+  function fillText(f) {
+    if (!f) return '<span class="flat">–</span>';
+    return f.done ? `<span class="up">已填息${f.days ? `（${f.days} 天）` : '（當天）'}</span>` : `<span class="down">未填息 ${fmtPct(f.gap, 1)}</span>`;
+  }
+  function lastCell(st) {
+    if (!st.last) return '<span class="flat">–</span>';
+    return `${md(st.last.ex)}・${fmtAmt(st.last.amt)} 元<span class="sub-name">${fillText(st.fill)}</span>`;
+  }
+  function nextCell(st) {
+    const n = st.next;
+    if (!n) return '<span class="flat">–</span>';
+    const amt = n.amt != null ? `${n.est ? '約 ' : ''}${fmtAmt(n.amt)} 元` : '金額待公告';
+    return `<span class="${n.est ? 'flat' : 'up'}">${md(n.ex)}${n.est ? ' 預估' : ''}</span><span class="sub-name">${amt}・${st.nextDays} 天後</span>`;
+  }
+  const payCell = st => (st.next ? `<span class="${st.next.payEst ? 'flat' : ''}">${md(st.next.pay)}${st.next.payEst ? ' 預估' : ''}</span>` : '<span class="flat">–</span>');
+
+  function etfCols() {
+    return [
+      RANK,
+      { k: 'name', t: 'ETF', l: true, v: r => r.st.code, h: r => `<span class="code">${r.st.code}</span><span class="name">${esc(r.st.name)}</span>` },
+      { k: 'type', t: '類型', l: true, v: r => r.st.type, h: r => typeTag(r.st) },
+      { k: 'iss', t: '投信', l: true, v: r => r.st.etf.iss, h: r => `<span class="flat">${esc(r.st.etf.iss || '–')}</span>` },
+      BK.close, BK.day,
+      { k: 'chg', t: '近一月(含息)', v: r => r.st.chg20, h: r => pctCell(r.st.chg20) },
+      { k: 'freq', t: '配息頻率', l: true, v: r => r.st.freq ?? -1, h: r => freqText(r.st) },
+      { k: 'months', t: etfState.monthBy === 'pay' ? '發放月份' : '除息月份', l: true,
+        v: r => Math.min(99, ...etfMonths(r.st)), h: r => `${mstrip(etfMonths(r.st))} <small class="flat">${monthText(etfMonths(r.st))}</small>` },
+      { k: 'ttm', t: '近12月配息', v: r => r.st.ttm, h: r => (r.st.ttm == null ? '–' : `${fmtAmt(r.st.ttm)} <small class="flat">(${r.st.ttmN} 次)</small>`) },
+      { k: 'yield', t: '近12月殖利率', v: r => r.st.yield, h: r => `<b class="${r.st.yield ? 'up' : 'flat'}">${fmtYield(r.st.yield)}</b>` },
+      { k: 'fwd', t: '年化殖利率', v: r => r.st.fwd, h: r => fmtYield(r.st.fwd) },
+      { k: 'last', t: '最近除息・填息', v: r => (r.st.last ? r.st.last.ex : null), h: r => lastCell(r.st) },
+      { k: 'next', t: '下次除息', v: r => r.st.nextDays, h: r => nextCell(r.st) },
+      { k: 'pay', t: '下次發放', v: r => (r.st.next ? r.st.next.pay : null), h: r => payCell(r.st) },
+      { k: 'aum', t: '規模(億)', v: r => r.st.etf.aum, h: r => fmtInt(r.st.etf.aum) },
+      { k: 'holders', t: '受益人數', v: r => r.st.etf.holders, h: r => fmtInt(r.st.etf.holders) },
+      BK.bias, BK.vol, BK.celeb,
+      { k: 'lnk', t: '連結', l: true, v: () => 0, h: r => `<span class="links">${etfLinks(r.st.code)}</span>` }
+    ];
+  }
+
+  let etfCurrentRows = [];
+  function renderEtfTable(res) {
+    const cols = etfCols();
+    const key = etfState.sortKey || 'rank';
+    const col = cols.find(c => c.k === key) || cols[0];
+    const dir = etfState.sortKey ? etfState.sortDir : 1;
+    const rows = res.rows.slice().sort((a, b) => {
+      const va = col.v(a), vb = col.v(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return (va > vb ? 1 : va < vb ? -1 : 0) * dir;
+    });
+    etfCurrentRows = rows;
+    const sortName = $(`#segEtfSort button[data-v="${etfState.sort}"]`).textContent;
+    const conds = [];
+    if (etfState.months.size) conds.push(`${[...etfState.months].sort((a, b) => a - b).join('・')} 月${etfState.monthBy === 'pay' ? '發放' : '除息'}`);
+    if (etfState.freq !== 'all') conds.push(FREQ_NAME[etfState.freq]);
+    if (etfState.soon) conds.push('30 天內除息');
+    $('#etfTableTitle').textContent = `ETF 排行${conds.length ? '【' + conds.join('＋') + '】' : ''}：符合 ${res.total} 檔，` +
+      (res.total > rows.length ? `依${sortName}取前 ${rows.length} 名` : `全部列出（依${sortName}排序）`);
+    if (!rows.length) {
+      $('#etfTableWrap').innerHTML = '<div class="empty">沒有符合條件的 ETF，試著放寬類型、月份或均量門檻。</div>';
+      return;
+    }
+    const head = cols.map(c => {
+      const on = c.k === key;
+      return `<th class="${c.l ? 'l' : ''} ${on ? 'sorted' : ''}" data-k="${c.k}">${c.t}${on ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
+    }).join('');
+    const body = rows.map(r => `<tr data-code="${r.st.code}">${cols.map(c => `<td class="${c.l ? 'l' : ''}">${c.h(r)}</td>`).join('')}</tr>`).join('');
+    $('#etfTableWrap').innerHTML = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+  }
+
+  function renderEtfKpis(uni, res) {
+    const soon = (n, official) => uni.filter(st => st.nextDays != null && st.nextDays <= n && !(official && st.next.est))
+      .sort((a, b) => a.nextDays - b.nextDays);
+    const s7 = soon(7, true), s30 = soon(30, false), s30o = s30.filter(st => !st.next.est);
+    const ym = TODAY.slice(0, 7);
+    const payThis = uni.filter(st => st.divs.some(x => x.pay.slice(0, 7) === ym && !x.payEst));
+    const ys = res.all.map(st => st.yield).filter(x => x != null && x > 0);
+    const med = median(ys);
+    const k = [
+      { lbl: '觀察母體（上市 ETF）', val: uni.length, sub: `共 ${etfs.length} 檔・均量 ≥ ${etfState.minVol.toLocaleString()} 張・已選 ${etfState.types.size} 類` },
+      { lbl: '7 天內除息（已公告）', val: s7.length, sub: s7.length ? '最近：' + s7.slice(0, 3).map(st => `${md(st.next.ex)} ${st.code}`).join('、') : '這週沒有' },
+      { lbl: '30 天內除息', val: s30.length, sub: `已公告 ${s30o.length} 檔・預估 ${s30.length - s30o.length} 檔` },
+      { lbl: `本月（${+ym.slice(5)} 月）發放`, val: payThis.length, sub: '依已公告的收益分配發放日' },
+      { lbl: '排行結果殖利率中位數', val: med == null ? '–' : fmtYield(med), sub: `近 12 月有配息 ${ys.length} / ${res.total} 檔`, c: med ? 'up' : '' }
+    ];
+    $('#etfKpis').innerHTML = k.map(x => `<div class="kpi"><div class="lbl">${x.lbl}</div><div class="val ${x.c || ''}">${x.val}</div><div class="sub">${x.sub}</div></div>`).join('');
+  }
+
+  function calEvents(uni, ym) {
+    const show = etfState.calShow, out = [];
+    for (const st of uni) {
+      for (const x of st.divs.concat(st.projected)) {
+        const yld = x.amt == null ? null : x.amt / (closeBefore(st, x.ex) || st.close);
+        if (show !== 'pay' && x.ex.slice(0, 7) === ym) out.push({ st, x, kind: 'ex', date: x.ex, est: x.est, yld });
+        if (show !== 'ex' && x.pay.slice(0, 7) === ym) out.push({ st, x, kind: 'pay', date: x.pay, est: x.payEst, yld });
+      }
+    }
+    return out.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0) || (a.kind === b.kind ? 0 : a.kind === 'ex' ? -1 : 1) || (b.yld ?? 0) - (a.yld ?? 0));
+  }
+
+  function renderCalendar(uni) {
+    const ym = etfState.calMonth, y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+    const evs = calEvents(uni, ym);
+    const nDays = new Date(y, m, 0).getDate(), lead = new Date(y, m - 1, 1).getDay();
+    const byDay = {};
+    for (const e of evs) (byDay[e.date] = byDay[e.date] || []).push(e);
+    const nEx = evs.filter(e => e.kind === 'ex').length, nPay = evs.length - nEx;
+    $('#calTitle').textContent = `${y} 年 ${m} 月配息行事曆：` +
+      [etfState.calShow !== 'pay' ? `除息 ${nEx} 檔次` : '', etfState.calShow !== 'ex' ? `發放 ${nPay} 檔次` : ''].filter(Boolean).join('・');
+    let cells = ['日', '一', '二', '三', '四', '五', '六'].map((w, i) => `<div class="wd ${i === 0 ? 'sun' : i === 6 ? 'sat' : ''}">${w}</div>`).join('');
+    for (let i = 0; i < lead; i++) cells += '<div class="day out"></div>';
+    for (let d = 1; d <= nDays; d++) {
+      const ds = `${ym}-${pad2(d)}`, list = byDay[ds] || [], wd = (lead + d - 1) % 7;
+      const ex = list.filter(e => e.kind === 'ex').length, pay = list.length - ex;
+      const chips = list.slice(0, 4).map(e =>
+        `<span class="ev ${e.kind}${e.est ? ' est' : ''}" title="${esc(`${e.st.code} ${e.st.name}：${e.kind === 'ex' ? '除息' : '發放'}${e.est ? '（預估）' : ''} ${fmtAmt(e.x.amt)} 元`)}">${e.st.code}</span>`).join('');
+      const cls2 = [ds === TODAY ? 'today' : '', etfState.calDay === ds ? 'sel' : '', list.length ? 'has' : '', wd === 0 ? 'sun' : wd === 6 ? 'sat' : ''].join(' ');
+      cells += `<div class="day ${cls2}" data-day="${ds}">
+        <div class="dn"><span>${d}</span><span class="cnt">${ex ? `<b class="cx">除${ex}</b>` : ''}${pay ? `<b class="cp">發${pay}</b>` : ''}</span></div>
+        <div class="evs">${chips}${list.length > 4 ? `<span class="ev more">+${list.length - 4}</span>` : ''}</div>
+      </div>`;
+    }
+    $('#calGrid').innerHTML = `<div class="cal">${cells}</div>`;
+
+    const day = etfState.calDay && etfState.calDay.slice(0, 7) === ym ? etfState.calDay : null;
+    const rows = day ? byDay[day] || [] : evs;
+    const head = day ? `${md(day)} 共 ${rows.length} 筆 <a href="#" class="mini-link" id="calAll">看整月</a>` : `本月共 ${rows.length} 筆（點行事曆日期只看當天）`;
+    if (!rows.length) {
+      $('#calList').innerHTML = `<div class="hint cal-head">${head}</div><div class="empty">這段期間沒有符合篩選條件的配息。</div>`;
+      return;
+    }
+    const body = rows.map(e => `
+      <tr data-code="${e.st.code}">
+        <td class="l">${md(e.date)}</td>
+        <td class="l"><span class="ev ${e.kind}${e.est ? ' est' : ''}">${e.kind === 'ex' ? '除息' : '發放'}</span></td>
+        <td class="l"><span class="code">${e.st.code}</span><span class="name">${esc(e.st.name)}</span></td>
+        <td class="l">${typeTag(e.st)}</td>
+        <td>${e.x.amt == null ? '<span class="flat">待公告</span>' : `${e.x.est ? '約 ' : ''}${fmtAmt(e.x.amt)} 元`}</td>
+        <td>${fmtYield(e.yld)}</td>
+        <td>${freqText(e.st)}</td>
+        <td>${fmtYield(e.yld != null && e.st.freq ? e.yld * e.st.freq : null)}</td>
+        <td>${md(e.x.ex)}${e.x.est ? ' 預估' : ''}</td>
+        <td>${md(e.x.pay)}${e.x.payEst ? ' 預估' : ''}</td>
+        <td class="l">${e.x.est ? '<span class="flat">依規律預估</span>' : e.x.ex <= TODAY ? '<span class="flat">已除息</span>' : e.x.amt == null ? '<span class="up">已公告日期</span>' : '<span class="up">已公告</span>'}</td>
+      </tr>`).join('');
+    $('#calList').innerHTML = `<div class="hint cal-head">${head}</div>
+      <div class="table-wrap cal-table"><table><thead><tr>
+        <th class="l">日期</th><th class="l">事件</th><th class="l">ETF</th><th class="l">類型</th><th>配息金額</th><th>單次殖利率</th>
+        <th>頻率</th><th>年化</th><th>除息日</th><th>發放日</th><th class="l">狀態</th>
+      </tr></thead><tbody>${body}</tbody></table></div>`;
+  }
+
+  function openEtfDrawer(code) {
+    const st = etfByCode[code];
+    if (!st) return;
+    const e = st.etf;
+    const li = st.last ? dateIdx[st.last.ex] : null;
+    const mark = li != null ? { idx: li, up: false, label: '除息' } : null;
+    const nx = st.next;
+    const stats = [
+      ['類型', typeTag(st)], ['配息頻率', freqText(st)],
+      ['近 12 月配息', st.ttm == null ? '–' : `${fmtAmt(st.ttm)} 元（${st.ttmN} 次）`], ['近 12 月殖利率', `<span class="up">${fmtYield(st.yield)}</span>`],
+      ['年化殖利率', fmtYield(st.fwd)], ['最近除息填息', fillText(st.fill)],
+      ['下次除息', nx ? `${nx.ex}${nx.est ? '（預估）' : ''}` : '–'], ['下次發放', nx ? `${nx.pay}${nx.payEst ? '（預估）' : ''}` : '–'],
+      ['規模', fmtInt(e.aum) + ' 億元'], ['受益人數', fmtInt(e.holders) + ' 人'],
+      ['上市日', e.list || '–'], ['投信', esc(e.iss || '–')],
+      ['月線乖離', `<span class="${cls(st.bias)}">${fmtPct(st.bias)}</span>`], ['RSI(14)', st.rsiNow == null ? '–' : st.rsiNow.toFixed(1)],
+      ['20 日均量', fmtInt(st.vol20) + ' 張'], ['近一月漲跌（含息）', `<span class="${cls(st.chg20)}">${fmtPct(st.chg20)}</span>`]
+    ];
+    const hist = st.divs.concat(st.projected).slice().reverse().map(x => {
+      const pre = closeBefore(st, x.ex);
+      const f = x.ex <= TODAY && !x.est ? fillOf(st, x.ex) : null;
+      const status = x.est ? '<span class="flat">依規律預估</span>' : x.ex > TODAY ? '<span class="up">已公告</span>' : fillText(f);
+      return `<tr><td class="l">${x.ex}</td><td class="l">${x.pay}${x.payEst ? ' 預估' : ''}</td>
+        <td>${x.amt == null ? '待公告' : (x.est ? '約 ' : '') + fmtAmt(x.amt) + ' 元'}</td>
+        <td>${x.amt == null ? '–' : fmtYield(x.amt / (pre || st.close)) + (pre ? '' : ' <small class="flat">(以現價)</small>')}</td>
+        <td class="l">${status}</td></tr>`;
+    }).join('');
+    const notes = st.mentions.map(m => `<li><span class="badge ${m.w}">${PEOPLE[m.w] ? PEOPLE[m.w].badge : ''}</span>${esc((PEOPLE[m.w] || {}).name || '')}：${esc(m.t)}</li>`).join('');
+    $('#drawer').innerHTML = `
+      <div class="dr-head">
+        <h2>${st.code} ${esc(st.name)}</h2>
+        <span class="flat">ETF・${esc(e.iss || '')}</span>
+        <span class="px ${cls(st.dayChg)}">${fmtP(st.close)} <small>${fmtPct(st.dayChg)}</small></span>
+        <span class="links">${etfLinks(st.code)}</span>
+        <button class="btn small close" id="drClose">關閉 ✕</button>
+      </div>
+      ${e.idx ? `<div class="hint">追蹤指數：${esc(e.idx)}</div>` : ''}
+      <div>${signalTags(st)}</div>
+      ${chartSVG(st, mark)}
+      <div class="chart-legend">
+        <span><i style="background:var(--ma5)"></i>MA5</span>
+        <span><i style="background:var(--ma10)"></i>MA10</span>
+        <span><i style="background:var(--ma20);height:4px"></i>月線 MA20</span>
+        <span><i style="background:var(--ma60)"></i>季線 MA60</span>
+        <span>K 棒：紅漲綠跌（已還原配息）；▼ 最近一次除息日</span>
+      </div>
+      <div class="stats">${stats.map(([a, b]) => `<div class="stat"><div class="lbl">${a}</div><div class="val">${b}</div></div>`).join('')}</div>
+      <h3>配息紀錄（近兩年，含已公告與預估）</h3>
+      ${hist ? `<div class="table-wrap mini"><table><thead><tr><th class="l">除息日</th><th class="l">發放日</th><th>配息金額</th><th>單次殖利率</th><th class="l">填息／狀態</th></tr></thead><tbody>${hist}</tbody></table></div>` : '<p class="hint">近兩年沒有配息紀錄。</p>'}
+      ${notes ? `<h3>名人觀點</h3><ul class="notes">${notes}</ul>` : ''}`;
+    $('#drawer').classList.add('show');
+    $('#backdrop').classList.add('show');
+    $('#drClose').onclick = closeDrawer;
+  }
+
+  function exportEtfCsv() {
+    const cols = etfCols().filter(c => c.k !== 'lnk');
+    const strip = h => String(h).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const lines = [cols.map(c => c.t).join(',')];
+    for (const r of etfCurrentRows) {
+      lines.push(cols.map(c => `"${(c.k === 'name' ? `${r.st.code} ${r.st.name}` : strip(c.h(r))).replace(/"/g, '""')}"`).join(','));
+    }
+    const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `etf_${etfState.sort}_${TODAY}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  function syncEtfControls() {
+    const uni = etfUniverse();
+    $('#etfTypeChips').innerHTML = Object.entries(ETF_TYPES).map(([t, n]) =>
+      `<button class="chip ${etfState.types.has(t) ? 'on' : ''}" data-type="${t}">${n} <small>${etfs.filter(s => s.type === t).length}</small></button>`).join('');
+    const mset = st => (etfState.monthBy === 'pay' ? st.monthsPay : st.monthsEx);
+    $('#etfMonthChips').innerHTML = Array.from({ length: 12 }, (_, i) => i + 1).map(m =>
+      `<button class="chip ${etfState.months.has(m) ? 'on' : ''}" data-month="${m}">${m} 月 <small>${uni.filter(st => mset(st).has(m)).length}</small></button>`).join('');
+    $('#etfMonthClear').classList.toggle('hidden', !etfState.months.size);
+    $$('#segEtfFreq button').forEach(b => b.classList.toggle('on', b.dataset.v === String(etfState.freq)));
+    $$('#segEtfSort button').forEach(b => b.classList.toggle('on', b.dataset.v === etfState.sort));
+    $$('#segEtfMonthBy button').forEach(b => b.classList.toggle('on', b.dataset.v === etfState.monthBy));
+    $$('#segCalShow button').forEach(b => b.classList.toggle('on', b.dataset.v === etfState.calShow));
+    $('#etfTop').value = String(etfState.topN);
+    $('#etfMinVol').value = String(etfState.minVol);
+    $('#optEtfActive').checked = etfState.active;
+    $('#optEtfSoon').checked = etfState.soon;
+    $('#optEtfCeleb').checked = etfState.celebOnly;
+  }
+
+  function updateEtf() {
+    if (!etfs.length) { $('#etfNodata').classList.remove('hidden'); return; }
+    syncEtfControls();
+    const uni = etfUniverse();
+    const res = etfRows(uni);
+    renderEtfKpis(uni, res);
+    renderCalendar(uni);
+    renderEtfTable(res);
+    saveEtfState();
+  }
+
+  function setView(v) {
+    etfState.view = v === 'etf' ? 'etf' : 'stock';
+    $('#stockView').classList.toggle('hidden', etfState.view !== 'stock');
+    $('#etfView').classList.toggle('hidden', etfState.view !== 'etf');
+    $$('#viewTabs button').forEach(b => b.classList.toggle('on', b.dataset.view === etfState.view));
+    if (etfState.view === 'etf') updateEtf(); else saveEtfState();
+  }
+
+  function bindEtf() {
+    $('#viewTabs').addEventListener('click', e => {
+      const b = e.target.closest('[data-view]');
+      if (b) setView(b.dataset.view);
+    });
+    const seg = (sel, fn) => $$(sel + ' button').forEach(b => b.addEventListener('click', e => { e.preventDefault(); fn(b.dataset.v); updateEtf(); }));
+    seg('#segEtfFreq', v => (etfState.freq = v === 'all' ? 'all' : v));
+    seg('#segEtfSort', v => { etfState.sort = v; etfState.sortKey = null; });
+    seg('#segEtfMonthBy', v => (etfState.monthBy = v));
+    seg('#segCalShow', v => (etfState.calShow = v));
+    $('#etfTypeChips').addEventListener('click', e => {
+      const b = e.target.closest('[data-type]');
+      if (!b) return;
+      const t = b.dataset.type, all = etfState.types.size === Object.keys(ETF_TYPES).length;
+      if (all) etfState.types = new Set([t]);
+      else if (etfState.types.has(t)) etfState.types.delete(t);
+      else etfState.types.add(t);
+      if (!etfState.types.size) etfState.types = new Set(Object.keys(ETF_TYPES));
+      updateEtf();
+    });
+    $('#etfTypeAll').addEventListener('click', e => { e.preventDefault(); etfState.types = new Set(Object.keys(ETF_TYPES)); updateEtf(); });
+    $('#etfMonthChips').addEventListener('click', e => {
+      const b = e.target.closest('[data-month]');
+      if (!b) return;
+      const m = +b.dataset.month;
+      if (etfState.months.has(m)) etfState.months.delete(m); else etfState.months.add(m);
+      updateEtf();
+    });
+    $('#etfMonthClear').addEventListener('click', e => { e.preventDefault(); etfState.months.clear(); updateEtf(); });
+    $('#etfTop').addEventListener('change', e => { etfState.topN = +e.target.value; updateEtf(); });
+    $('#etfMinVol').addEventListener('change', e => { etfState.minVol = +e.target.value; updateEtf(); });
+    $('#etfQ').addEventListener('input', e => { etfState.query = e.target.value; updateEtf(); });
+    const chk = (id, key) => $(id).addEventListener('change', e => { etfState[key] = e.target.checked; updateEtf(); });
+    chk('#optEtfActive', 'active');
+    chk('#optEtfSoon', 'soon');
+    chk('#optEtfCeleb', 'celebOnly');
+    $('#btnEtfCsv').addEventListener('click', exportEtfCsv);
+    const moveMonth = n => { etfState.calMonth = addMonths(etfState.calMonth + '-01', n).slice(0, 7); etfState.calDay = null; updateEtf(); };
+    $('#calPrev').addEventListener('click', () => moveMonth(-1));
+    $('#calNext').addEventListener('click', () => moveMonth(1));
+    $('#calNow').addEventListener('click', () => { etfState.calMonth = TODAY.slice(0, 7); etfState.calDay = null; updateEtf(); });
+    $('#calGrid').addEventListener('click', e => {
+      const d = e.target.closest('.day[data-day]');
+      if (!d) return;
+      etfState.calDay = etfState.calDay === d.dataset.day ? null : d.dataset.day;
+      updateEtf();
+    });
+    $('#calList').addEventListener('click', e => {
+      if (e.target.closest('#calAll')) { e.preventDefault(); etfState.calDay = null; updateEtf(); return; }
+      const tr = e.target.closest('tr[data-code]');
+      if (tr) openEtfDrawer(tr.dataset.code);
+    });
+    $('#etfTableWrap').addEventListener('click', e => {
+      const th = e.target.closest('th');
+      if (th) {
+        const k = th.dataset.k;
+        if (etfState.sortKey === k) etfState.sortDir *= -1; else { etfState.sortKey = k; etfState.sortDir = 1; }
+        updateEtf();
+        return;
+      }
+      if (e.target.closest('a')) return;
+      const tr = e.target.closest('tr[data-code]');
+      if (tr) openEtfDrawer(tr.dataset.code);
+    });
   }
 
   // ------------------------------------------------------------------ CSV
@@ -1314,8 +1862,9 @@
         state.industries = allIndustries();
         state.subs.clear();
         state.sortKey = null;
+        setView('stock');
         update();
-        document.querySelector('.controls').scrollIntoView({ behavior: 'smooth' });
+        document.querySelector('#stockView .controls').scrollIntoView({ behavior: 'smooth' });
       }
     });
     $('#backdrop').addEventListener('click', closeDrawer);
@@ -1325,5 +1874,7 @@
   renderMarket();
   renderCelebs();
   bind();
+  bindEtf();
   update();
+  setView(etfState.view);
 })();

@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>台灣股票篩選器</title>
+  <title>台灣股票聚焦鏡</title>
   <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
   <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-  <meta name="apple-mobile-web-app-title" content="台灣股票篩選器">
+  <meta name="apple-mobile-web-app-title" content="台灣股票聚焦鏡">
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="assets/style.css">
   <script>
@@ -22,7 +22,7 @@
     <div class="brand">
       <img class="logo" src="assets/icons/apple-touch-icon.png" alt="" aria-hidden="true">
       <div>
-        <h1>台灣股票篩選器</h1>
+        <h1>台灣股票聚焦鏡</h1>
         <img class="maker" src="assets/icons/baicheng-bar.svg" alt="百程有伶">
       </div>
     </div>
@@ -50,6 +50,12 @@
       <p>請先雙擊資料夾中的 <code>更新資料.bat</code>（或執行 <code>update-data.ps1</code>），完成後重新整理此頁。</p>
     </div>
 
+    <nav class="view-tabs" id="viewTabs">
+      <button type="button" data-view="stock" class="on">個股聚焦</button>
+      <button type="button" data-view="etf">ETF 配息・排行</button>
+    </nav>
+
+    <div id="stockView">
     <section class="panel controls">
       <div class="tabs" role="tablist">
         <button class="tab active" data-mode="break" data-label="跌破均線">跌破均線 Top 50</button>
@@ -377,6 +383,127 @@
       </div>
       <div class="table-wrap" id="tableWrap"></div>
     </section>
+    </div>
+
+    <div id="etfView" class="hidden">
+      <div id="etfNodata" class="panel notice hidden">
+        <h2>尚未有 ETF 資料</h2>
+        <p>請先雙擊資料夾中的 <code>更新資料.bat</code>（或執行 <code>update-etf.ps1</code>），完成後重新整理此頁。</p>
+      </div>
+
+      <section class="panel controls">
+        <div class="ctl-row">
+          <div class="ctl grow">
+            <label>ETF 類型 <a href="#" id="etfTypeAll" class="mini-link">全選</a> <span class="hint">（全選時點一個＝只看該類型；之後點其他類型可加選）</span></label>
+            <div class="chips" id="etfTypeChips"></div>
+          </div>
+        </div>
+        <div class="ctl-row">
+          <div class="ctl">
+            <label>配息頻率</label>
+            <div class="seg" id="segEtfFreq">
+              <button data-v="all" class="on">不限</button>
+              <button data-v="12">月配</button>
+              <button data-v="4">季配</button>
+              <button data-v="2">半年配</button>
+              <button data-v="1">年配</button>
+              <button data-v="0">不配息</button>
+            </div>
+          </div>
+          <div class="ctl">
+            <label>排序依據</label>
+            <div class="seg" id="segEtfSort">
+              <button data-v="yield" class="on">近 12 月殖利率</button>
+              <button data-v="fwd">年化殖利率</button>
+              <button data-v="next">最快除息</button>
+              <button data-v="aum">規模</button>
+              <button data-v="holders">受益人數</button>
+              <button data-v="vol">成交量</button>
+              <button data-v="chg">近一月漲跌</button>
+            </div>
+          </div>
+        </div>
+        <div class="ctl-row">
+          <div class="ctl grow">
+            <label>
+              配息月份
+              <span class="seg mini" id="segEtfMonthBy"><button data-v="ex" class="on">看除息月</button><button data-v="pay">看發放月</button></span>
+              <a href="#" id="etfMonthClear" class="mini-link">清除月份</a>
+              <span class="hint">（可複選：只看在這些月份除息／領到錢的 ETF，依近一年紀錄與已公告配息）</span>
+            </label>
+            <div class="chips" id="etfMonthChips"></div>
+          </div>
+        </div>
+        <div class="ctl-row">
+          <div class="ctl">
+            <label>顯示前</label>
+            <select id="etfTop">
+              <option value="30">Top 30</option>
+              <option value="50" selected>Top 50</option>
+              <option value="100">Top 100</option>
+              <option value="999">全部</option>
+            </select>
+          </div>
+          <div class="ctl">
+            <label>20 日均量 ≥</label>
+            <select id="etfMinVol">
+              <option value="0">不限</option>
+              <option value="100" selected>100 張</option>
+              <option value="500">500 張</option>
+              <option value="1000">1,000 張</option>
+              <option value="5000">5,000 張</option>
+            </select>
+          </div>
+          <div class="ctl grow">
+            <label>搜尋</label>
+            <input type="search" id="etfQ" placeholder="代號、名稱或投信，例如 0056、高股息、國泰">
+          </div>
+          <div class="ctl checks">
+            <label class="chk"><input type="checkbox" id="optEtfActive"> 只看主動式</label>
+            <label class="chk"><input type="checkbox" id="optEtfSoon"> 只看 30 天內除息</label>
+            <label class="chk"><input type="checkbox" id="optEtfCeleb"> 只看名人提及</label>
+          </div>
+          <div class="ctl">
+            <label>&nbsp;</label>
+            <button class="btn" id="btnEtfCsv">匯出 CSV</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="kpis" id="etfKpis"></section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2 id="calTitle">配息行事曆</h2>
+          <div class="cal-nav">
+            <button class="btn small" id="calPrev" type="button">‹ 上個月</button>
+            <button class="btn small" id="calNow" type="button">本月</button>
+            <button class="btn small" id="calNext" type="button">下個月 ›</button>
+            <div class="seg mini" id="segCalShow">
+              <button data-v="ex" class="on">除息日</button>
+              <button data-v="pay">發放日</button>
+              <button data-v="both">兩者</button>
+            </div>
+          </div>
+        </div>
+        <div class="cal-legend hint">
+          <span class="ev ex">除息</span> 這天以前買進才領得到
+          <span class="ev pay">發放</span> 錢入帳的日子
+          <span class="ev ex est">虛線</span> 依過去配息規律預估，尚未公告
+          ・點日期只看當天，再點一次看整月；行事曆跟著上方篩選（月份與 30 天內條件除外）
+        </div>
+        <div id="calGrid"></div>
+        <div id="calList"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2 id="etfTableTitle">ETF 排行</h2>
+          <span class="hint">點欄位標題排序；點列開啟 K 線圖與配息紀錄</span>
+        </div>
+        <div class="table-wrap" id="etfTableWrap"></div>
+      </section>
+    </div>
 
     <section class="panel method">
       <details>
@@ -394,7 +521,9 @@
           <li>期間換算：1 週 = 5 個交易日。期間漲跌 = 最新收盤 ÷ 期間起點收盤 − 1。</li>
           <li>篩選設定會記在這台裝置（手機、電腦各自記住），下次打開維持上次的選擇。</li>
           <li>本月跌幅 = 最新收盤 ÷ 上月最後一個交易日收盤 − 1；區間高點回撤 = 最新收盤 ÷ 區間最高收盤 − 1。</li>
-          <li>本頁僅為技術面篩選工具，名人觀點為公開報導摘要，皆不構成投資建議。</li>
+          <li>ETF：證交所「ETF e添富」的商品清單（規模、受益人數、上市日、投信、追蹤指數，以及股票型／債券型／原物料、槓桿／反向、主動式、高股息等官方分類）與「配息清單」（近兩年的除息交易日、收益分配發放日、配息金額，含已公告尚未除息者），另併入證交所「除權除息預告表」（TWT48U）。只含上市 ETF，上櫃 ETF（如部分債券 ETF）不在內；海外／國內是依 ETF 名稱與追蹤指數判斷。</li>
+          <li>ETF 配息頻率：依近 400 天的除息間隔判斷（約 1 個月＝月配、3 個月＝季配、6 個月＝半年配、1 年＝年配）。近 12 月殖利率 = 近 365 天已除息的配息合計 ÷ 最新收盤；年化殖利率 = 最近一次配息 × 每年配息次數 ÷ 最新收盤（新上市未滿一年的 ETF 看這個較準）。下次除息若尚未公告，依最近一次除息日加上配息間隔預估（金額沿用上一次，標示「預估」）。填息 = 除息後收盤回到除息前一日收盤。</li>
+          <li>本頁僅為技術面篩選工具，名人觀點為公開報導摘要，皆不構成投資建議；ETF 配息率不代表報酬率，過去配息不代表未來配息。</li>
         </ul>
       </details>
     </section>
@@ -415,6 +544,7 @@
   <script src="data/celebrity.js"></script>
   <script src="data/stocks-data.js"></script>
   <script src="data/subindustry.js"></script>
+  <script src="data/etf-data.js"></script>
   <script src="assets/app.js"></script>
 </body>
 </html>

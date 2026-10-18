@@ -351,3 +351,9 @@ foreach ($code in ($series.Keys | Sort-Object)) {
 $outFile = Join-Path $dataDir 'stocks-data.js'
 [IO.File]::WriteAllText($outFile, $sb.ToString(), $utf8)
 Write-Host ("Done. {0} stocks x {1} days -> {2}" -f $count, $T, $outFile)
+
+# ---------------------------------------------------------------- 5. ETFs (quotes come from the cache above; a failure keeps the stock data)
+Write-Host ''
+Write-Host 'ETF dividend schedule and ranking data ...'
+try { & (Join-Path $root 'update-etf.ps1') -TradingDays $TradingDays }
+catch { Write-Host ("ETF data skipped: {0}" -f $_.Exception.Message) }
