@@ -28,7 +28,13 @@
     </div>
     <div class="market" id="market"></div>
     <div class="meta" id="meta"></div>
-    <button class="btn theme-btn" id="themeBtn" type="button"></button>
+    <div class="corner">
+      <button class="btn theme-btn" id="themeBtn" type="button"></button>
+      <div class="site-info">
+        <span title="v1 電子類股篩選／v2 聚焦鏡＋ETF 配息／v2.1 除權息＋最慢買進日">版次 v2.1・2026/10/19</span>
+        <span id="views" class="hidden"></span>
+      </div>
+    </div>
   </header>
   <script>
     (function () {
@@ -41,6 +47,20 @@
         label();
       });
       label();
+    })();
+    // Page views (abacus counter): only the GitHub Pages copy counts, once per browser session; local copies just read the total.
+    (function () {
+      var el = document.getElementById('views'), base = 'https://abacus.jasoncameron.dev/';
+      var online = /github\.io$/.test(location.hostname), counted = false;
+      try { counted = sessionStorage.getItem('cria-viewed') === '1'; } catch (e) {}
+      var url = base + (online && !counted ? 'hit' : 'get') + '/tomicahuang-stock-radar/views';
+      if (!window.fetch) return;
+      fetch(url).then(function (r) { return r.ok ? r.json() : r.status === 404 ? { value: 0 } : null; }).then(function (j) {
+        if (!j || typeof j.value !== 'number') return;
+        if (online) { try { sessionStorage.setItem('cria-viewed', '1'); } catch (e) {} }
+        el.textContent = '瀏覽 ' + j.value.toLocaleString('zh-TW') + ' 次';
+        el.classList.remove('hidden');
+      }).catch(function () {});
     })();
   </script>
 
