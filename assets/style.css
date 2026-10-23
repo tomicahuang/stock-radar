@@ -19,6 +19,8 @@
   --thead: #1b2642;
   --row-line: #1c2640;
   --row-hover: #18223d;
+  --row-even: rgba(148, 163, 184, .10);
+  --row-hover-cell: rgba(96, 165, 250, .16);
   --posts-text: #c7d0e4;
   --on-accent: #07122a;
   --chart-bg: #0d1426;
@@ -62,6 +64,8 @@
   --thead: #eef2f8;
   --row-line: #e7ebf2;
   --row-hover: #f3f7fd;
+  --row-even: rgba(30, 64, 175, .075);
+  --row-hover-cell: rgba(37, 99, 235, .13);
   --posts-text: #374151;
   --on-accent: #ffffff;
   --chart-bg: #ffffff;
@@ -329,6 +333,9 @@ tbody td { padding: 8px; text-align: right; border-bottom: 1px solid var(--row-l
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--row-hover); }
 tbody tr.hit { background: color-mix(in srgb, var(--down) 9%, transparent); }
+/* zebra on the cells so it layers over the row's highlight colour */
+tbody tr:nth-child(even) > td { background-color: var(--row-even); }
+tbody tr:hover > td { background-color: var(--row-hover-cell); }
 .code { color: var(--muted); font-size: 12px; margin-right: 6px; }
 .name { font-weight: 700; }
 .up { color: var(--up); }
