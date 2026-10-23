@@ -14,6 +14,7 @@
   --yu: #38bdf8;
   --li: #f472b6;
   --long: #fb923c;
+  --du: #34d399;
   --topbar: linear-gradient(90deg, #0f1730, #131d3a);
   --thead: #1b2642;
   --row-line: #1c2640;
@@ -56,6 +57,7 @@
   --yu: #0284c7;
   --li: #db2777;
   --long: #ea580c;
+  --du: #059669;
   --topbar: linear-gradient(90deg, #ffffff, #eef3fb);
   --thead: #eef2f8;
   --row-line: #e7ebf2;
@@ -150,7 +152,7 @@ main { padding: 18px 24px 60px; max-width: 1600px; margin: 0 auto; }
 .notice { border-color: var(--gold); }
 
 /* ---------- celebrity cards ---------- */
-.celeb-list { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.celeb-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
 .pcard {
   display: flex; align-items: center; gap: 10px; text-align: left;
   background: var(--panel-2); color: var(--text); font-family: inherit;
@@ -182,6 +184,7 @@ main { padding: 18px 24px 60px; max-width: 1600px; margin: 0 auto; }
 .celeb.yu, .pcard.yu { --c: var(--yu); }
 .celeb.li, .pcard.li { --c: var(--li); }
 .celeb.long, .pcard.long { --c: var(--long); }
+.celeb.du, .pcard.du { --c: var(--du); }
 .celeb-head { display: flex; align-items: center; gap: 12px; }
 .avatar {
   width: 44px; height: 44px; border-radius: 50%;
@@ -349,6 +352,7 @@ tbody tr.hit { background: color-mix(in srgb, var(--down) 9%, transparent); }
 .badge.yu { color: var(--yu); border-color: var(--yu); background: #062233; }
 .badge.li { color: var(--li); border-color: var(--li); background: #33091f; }
 .badge.long { color: var(--long); border-color: var(--long); background: #33170a; }
+.badge.du { color: var(--du); border-color: var(--du); background: #05261b; }
 .links a { margin-left: 6px; font-size: 12px; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 .rank { color: var(--muted); }
