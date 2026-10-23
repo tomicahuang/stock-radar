@@ -402,12 +402,11 @@
 
     <section class="kpis" id="kpis"></section>
 
-    <section class="panel">
-      <div class="panel-head">
-        <h2>族群廣度：目前收盤在月線下的比例</h2>
-        <span class="hint">點選產業可單獨篩選；游庭皓「看輪動」的觀察方式</span>
-      </div>
-      <div id="breadth"></div>
+    <section class="panel fold">
+      <details>
+        <summary>族群廣度：目前收盤在月線下的比例 <span class="hint">（點選產業可單獨篩選；游庭皓「看輪動」的觀察方式）</span></summary>
+        <div id="breadth"></div>
+      </details>
     </section>
 
     <section class="panel">
@@ -550,8 +549,9 @@
       <div id="celebDetail"></div>
     </section>
 
-    <section class="panel" id="legend">
-      <div class="panel-head"><h2>訊號說明</h2></div>
+    <section class="panel fold" id="legend">
+      <details>
+      <summary>訊號說明</summary>
       <ul class="legend">
         <li><span class="tag bull">多頭排列</span>5 日線 &gt; 10 日線 &gt; 月線（20 日）</li>
         <li><span class="tag bear">空頭排列</span>5 日線 &lt; 10 日線 &lt; 月線（20 日）</li>
@@ -567,6 +567,7 @@
         <li><span class="tag inst">土洋同買</span>最新一日外資與投信同步買超</li>
       </ul>
       <p class="hint">價格已依證交所「漲跌價差」自動還原除權息，避免除息日誤判跌破。台股慣例：紅漲綠跌。</p>
+      </details>
     </section>
 
     <section class="panel method">
