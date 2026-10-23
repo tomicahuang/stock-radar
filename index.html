@@ -402,32 +402,12 @@
 
     <section class="kpis" id="kpis"></section>
 
-    <section class="grid2">
-      <div class="panel">
-        <div class="panel-head">
-          <h2>族群廣度：目前收盤在月線下的比例</h2>
-          <span class="hint">點選產業可單獨篩選；游庭皓「看輪動」的觀察方式</span>
-        </div>
-        <div id="breadth"></div>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>族群廣度：目前收盤在月線下的比例</h2>
+        <span class="hint">點選產業可單獨篩選；游庭皓「看輪動」的觀察方式</span>
       </div>
-      <div class="panel">
-        <div class="panel-head"><h2>訊號說明</h2></div>
-        <ul class="legend">
-          <li><span class="tag bull">多頭排列</span>5 日線 &gt; 10 日線 &gt; 月線（20 日）</li>
-          <li><span class="tag bear">空頭排列</span>5 日線 &lt; 10 日線 &lt; 月線（20 日）</li>
-          <li><span class="tag bear">月線下彎</span>月線低於 5 個交易日前</li>
-          <li><span class="tag bear">量增跌破</span>跌破當日成交量 ≥ 前 5 日均量 1.5 倍</li>
-          <li><span class="tag bear">破季線</span>收盤低於 60 日均線</li>
-          <li><span class="tag bull">RSI 超賣</span>RSI(14) &lt; 30</li>
-          <li><span class="tag bull">KD 低檔金叉</span>K 由下往上穿越 D 且 K &lt; 30</li>
-          <li><span class="tag dip">低接觀察</span>月線乖離 ≤ −5% 且 RSI ≤ 40（陳重銘「低接不追高」）</li>
-          <li><span class="tag bull">量增站上</span>站上當日成交量 ≥ 前 5 日均量 1.5 倍</li>
-          <li><span class="tag neutral">已站回／已跌回</span>跌破後又站回該均線，或站上後又跌回</li>
-          <li><span class="tag bull">MACD 翻正</span>近 3 日內 MACD 柱狀體（OSC）由負轉正，且目前仍為正</li>
-          <li><span class="tag inst">土洋同買</span>最新一日外資與投信同步買超</li>
-        </ul>
-        <p class="hint">價格已依證交所「漲跌價差」自動還原除權息，避免除息日誤判跌破。台股慣例：紅漲綠跌。</p>
-      </div>
+      <div id="breadth"></div>
     </section>
 
     <section class="panel">
@@ -568,6 +548,25 @@
       </div>
       <div class="celeb-list" id="celebList"></div>
       <div id="celebDetail"></div>
+    </section>
+
+    <section class="panel" id="legend">
+      <div class="panel-head"><h2>訊號說明</h2></div>
+      <ul class="legend">
+        <li><span class="tag bull">多頭排列</span>5 日線 &gt; 10 日線 &gt; 月線（20 日）</li>
+        <li><span class="tag bear">空頭排列</span>5 日線 &lt; 10 日線 &lt; 月線（20 日）</li>
+        <li><span class="tag bear">月線下彎</span>月線低於 5 個交易日前</li>
+        <li><span class="tag bear">量增跌破</span>跌破當日成交量 ≥ 前 5 日均量 1.5 倍</li>
+        <li><span class="tag bear">破季線</span>收盤低於 60 日均線</li>
+        <li><span class="tag bull">RSI 超賣</span>RSI(14) &lt; 30</li>
+        <li><span class="tag bull">KD 低檔金叉</span>K 由下往上穿越 D 且 K &lt; 30</li>
+        <li><span class="tag dip">低接觀察</span>月線乖離 ≤ −5% 且 RSI ≤ 40（陳重銘「低接不追高」）</li>
+        <li><span class="tag bull">量增站上</span>站上當日成交量 ≥ 前 5 日均量 1.5 倍</li>
+        <li><span class="tag neutral">已站回／已跌回</span>跌破後又站回該均線，或站上後又跌回</li>
+        <li><span class="tag bull">MACD 翻正</span>近 3 日內 MACD 柱狀體（OSC）由負轉正，且目前仍為正</li>
+        <li><span class="tag inst">土洋同買</span>最新一日外資與投信同步買超</li>
+      </ul>
+      <p class="hint">價格已依證交所「漲跌價差」自動還原除權息，避免除息日誤判跌破。台股慣例：紅漲綠跌。</p>
     </section>
 
     <section class="panel method">
