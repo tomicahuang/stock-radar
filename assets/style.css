@@ -303,6 +303,19 @@ input[type="range"] { width: 180px; accent-color: var(--accent); }
 .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
 .kpi .lbl { color: var(--muted); font-size: 12px; }
 .kpi .val { font-size: 24px; font-weight: 800; margin-top: 4px; }
+.kpi {
+  --k: var(--accent);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--k) 18%, var(--panel)), var(--panel) 75%);
+  border-color: color-mix(in srgb, var(--k) 40%, var(--line));
+  border-top: 3px solid var(--k);
+}
+.kpi:nth-child(1) { --k: #3b82f6; }
+.kpi:nth-child(2) { --k: #8b5cf6; }
+.kpi:nth-child(3) { --k: #f59e0b; }
+.kpi:nth-child(4) { --k: #14b8a6; }
+.kpi:nth-child(5) { --k: #ec4899; }
+.kpi .lbl { color: color-mix(in srgb, var(--k) 75%, var(--text)); font-weight: 600; }
+.kpi .val:not(.up):not(.down) { color: color-mix(in srgb, var(--k) 80%, var(--text)); }
 .kpi .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
 .grid2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
