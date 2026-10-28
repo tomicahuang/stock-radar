@@ -345,7 +345,7 @@
         </div>
       </div>
 
-      <div class="ctl-row">
+      <div class="ctl-row common-row">
         <div class="ctl">
           <label>顯示前</label>
           <select id="topN">
@@ -424,14 +424,14 @@
         <p>請先雙擊資料夾中的 <code>更新資料.bat</code>（或執行 <code>update-etf.ps1</code>），完成後重新整理此頁。</p>
       </div>
 
-      <section class="panel controls">
+      <section class="panel controls etf-controls">
         <div class="ctl-row">
           <div class="ctl grow">
             <label>ETF 類型 <a href="#" id="etfTypeAll" class="mini-link">全選</a> <span class="hint">（全選時點一個＝只看該類型；之後點其他類型可加選）</span></label>
             <div class="chips" id="etfTypeChips"></div>
           </div>
         </div>
-        <div class="ctl-row">
+        <div class="ctl-row tint-row" style="--t: #0d9488">
           <div class="ctl">
             <label>配息頻率</label>
             <div class="seg" id="segEtfFreq">
@@ -456,7 +456,7 @@
             </div>
           </div>
         </div>
-        <div class="ctl-row">
+        <div class="ctl-row tint-row" style="--t: #ea580c">
           <div class="ctl grow">
             <label>
               配息月份
@@ -467,7 +467,7 @@
             <div class="chips" id="etfMonthChips"></div>
           </div>
         </div>
-        <div class="ctl-row">
+        <div class="ctl-row common-row">
           <div class="ctl">
             <label>顯示前</label>
             <select id="etfTop">
@@ -505,7 +505,7 @@
 
       <section class="kpis" id="etfKpis"></section>
 
-      <section class="panel">
+      <section class="panel cal-panel">
         <div class="panel-head">
           <h2 id="calTitle">配息行事曆</h2>
           <div class="cal-nav">

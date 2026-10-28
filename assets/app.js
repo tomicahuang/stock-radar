@@ -884,7 +884,7 @@
         <div class="lbl">台指期 近月${exp ? `（${exp.slice(0, 4)}/${exp.slice(4)}）` : ''}</div>
         <div class="val ${cls(x.chg)}">${x.c.toLocaleString('zh-TW')} <small>${fmtPct(x.chg)}</small></div>
         <div class="sub ${cls(x.bias)}">月線 ${x.ma ? x.ma.toFixed(0) : '–'}・乖離 ${fmtPct(x.bias)}・${x.bias < 0 ? '月線下' : '月線上'}</div>
-        <div class="sub">${basis == null ? '' : `<span class="${cls(basis)}">${basis >= 0 ? '正' : '逆'}價差 ${Math.abs(basis).toFixed(0)} 點</span>`}${night ? '・' + night : ''}</div>
+        <div class="sub">${basis == null ? '' : `<span class="basis ${cls(basis)}">${basis >= 0 ? '正' : '逆'}價差 ${Math.abs(basis).toFixed(0)} 點</span>`}${night ? '・' + night : ''}</div>
       </div>`;
   }
 
