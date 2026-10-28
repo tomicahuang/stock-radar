@@ -911,6 +911,7 @@
 
   function renderCelebs() {
     const people = CELEB.people || [];
+    $('#celebUpdated').textContent = CELEB.updated ? `更新於 ${CELEB.updated.replace(/-/g, '/')}` : '';
     $('#celebList').innerHTML = people.map(p => {
       const latest = (p.posts.find(x => /^\d{4}-\d{2}-\d{2}$/.test(x.date)) || {}).date;
       const open = state.openCeleb === p.id;

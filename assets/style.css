@@ -156,6 +156,9 @@ main { padding: 18px 24px 60px; max-width: 1600px; margin: 0 auto; }
 .notice { border-color: var(--gold); }
 
 /* ---------- celebrity cards ---------- */
+.celebs .panel-head { margin-bottom: 2px; flex-wrap: nowrap; }
+.celeb-date { margin-left: auto; white-space: nowrap; font-size: 12px; font-weight: 600; color: var(--accent); }
+.celeb-hint { margin: 0 0 10px; }
 .celeb-list { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
 .pcard {
   display: flex; align-items: center; gap: 10px; text-align: left;
