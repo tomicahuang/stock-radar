@@ -1775,6 +1775,12 @@
   function saveLocal(list) { try { localStorage.setItem(MY_KEY, JSON.stringify(list)); } catch (e) { /* not kept */ } }
   function setDirty(on) { try { if (on) localStorage.setItem(DIRTY_KEY, '1'); else localStorage.removeItem(DIRTY_KEY); } catch (e) { /* ignore */ } }
   const isDirty = () => { try { return localStorage.getItem(DIRTY_KEY) === '1'; } catch (e) { return false; } };
+  // older entries stored whole lots (張); 1 lot = 1,000 shares
+  const mySharesOf = x => (+x.shares > 0 ? +x.shares : +x.lots > 0 ? +x.lots * 1000 : null);
+  function normalizeMy(list) {
+    for (const x of list) { if (x.lots != null) { if (!(+x.shares > 0) && +x.lots > 0) x.shares = +x.lots * 1000; delete x.lots; } }
+    return list;
+  }
   const inMy = code => loadMy().some(x => x.code === code);
   const isTypeA = () => etfState.view === 'trend';
   const hhmm = () => { const d = new Date(); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
@@ -1838,6 +1844,7 @@
     if (syncId() && !isDirty()) {
       try { const rem = await pullRemote(); if (rem !== null) list = rem; } catch (e) { /* use local */ }
     }
+    normalizeMy(list);
     fn(list);
     saveLocal(list);
     refreshMyViews();
@@ -1863,10 +1870,10 @@
           <td class="l"><button class="btn small" type="button" data-my-del="${esc(x.code)}">移除</button></td></tr>`;
       }
       const tr = classifyTrend(st);
-      const cost = +x.cost > 0 ? +x.cost : null, lots = +x.lots > 0 ? +x.lots : null;
+      const cost = +x.cost > 0 ? +x.cost : null, shares = mySharesOf(x);
       const pl = cost ? st.close / cost - 1 : null;
-      const amt = cost && lots ? (st.close - cost) * lots * 1000 : null;
-      if (cost && lots) { sumCost += cost * lots * 1000; sumNow += st.close * lots * 1000; }
+      const amt = cost && shares ? (st.close - cost) * shares : null;
+      if (cost && shares) { sumCost += cost * shares; sumNow += st.close * shares; }
       return `<tr>
         <td class="l"><a href="#" data-pick="${st.code}"><span class="code">${st.code}</span><span class="name">${esc(st.name)}</span></a></td>
         <td>${fmtP(st.close)}</td><td>${pctCell(st.dayChg)}</td>
@@ -1874,7 +1881,7 @@
         <td class="l"><button class="btn small my-view" type="button" data-pick="${st.code}">看趨勢</button></td>
         <td class="l">${celebBadges(st) || '<span class="flat">–</span>'}</td>
         <td><input class="my-in" type="number" step="0.01" min="0" inputmode="decimal" data-my-cost="${st.code}" value="${cost ?? ''}" placeholder="買進價"></td>
-        <td><input class="my-in short" type="number" step="1" min="0" inputmode="numeric" data-my-lots="${st.code}" value="${lots ?? ''}" placeholder="張"></td>
+        <td><input class="my-in short" type="number" step="1" min="0" inputmode="numeric" data-my-shares="${st.code}" value="${shares ?? ''}" placeholder="股"></td>
         <td>${pl == null ? '<span class="flat">–</span>' : pctCell(pl)}</td>
         <td>${amt == null ? '<span class="flat">–</span>' : `<span class="${cls(amt)}">${(amt > 0 ? '+' : '') + Math.round(amt).toLocaleString('zh-TW')}</span>`}</td>
         <td class="l nowrap"><button class="btn small" type="button" data-my-del="${st.code}">移除</button></td>
@@ -1882,9 +1889,9 @@
     }).join('');
     const tot = sumCost ? sumNow - sumCost : null;
     $('#myList').innerHTML = `<div class="table-wrap mini my-table"><table><thead><tr>
-      <th class="l">股票</th><th>收盤</th><th>日漲跌</th><th class="l">型態</th><th class="l"></th><th class="l">名人</th><th>買進價</th><th>張數</th><th>損益%</th><th>損益(元)</th><th class="l"></th>
+      <th class="l">股票</th><th>收盤</th><th>日漲跌</th><th class="l">型態</th><th class="l"></th><th class="l">名人</th><th>買進價</th><th>股數</th><th>損益%</th><th>損益(元)</th><th class="l"></th>
       </tr></thead><tbody>${rows}</tbody></table></div>
-      ${tot == null ? '' : `<p class="my-total">有填買進價與張數的合計：成本 ${Math.round(sumCost).toLocaleString('zh-TW')} 元，市值 ${Math.round(sumNow).toLocaleString('zh-TW')} 元，
+      ${tot == null ? '' : `<p class="my-total">有填買進價與股數的合計：成本 ${Math.round(sumCost).toLocaleString('zh-TW')} 元，市值 ${Math.round(sumNow).toLocaleString('zh-TW')} 元，
         損益 <span class="${cls(tot)}">${(tot > 0 ? '+' : '') + Math.round(tot).toLocaleString('zh-TW')} 元（${fmtPct(tot / sumCost)}）</span>（未含手續費與稅）</p>`}`;
   }
 
@@ -2085,13 +2092,13 @@
       }
     });
     $('#myList').addEventListener('change', e => {
-      const t = e.target, code = t.dataset.myCost || t.dataset.myLots;
+      const t = e.target, code = t.dataset.myCost || t.dataset.myShares;
       if (!code) return;
       const v = t.value === '' ? null : +t.value, isCost = !!t.dataset.myCost;
       mutateMy(list => {
         const x = list.find(y => y.code === code);
         if (!x) return;
-        if (isCost) x.cost = v > 0 ? v : null; else x.lots = v > 0 ? v : null;
+        if (isCost) x.cost = v > 0 ? v : null; else x.shares = v > 0 ? Math.round(v) : null;
       });
     });
     $('#myExport').addEventListener('click', e => {
@@ -2114,7 +2121,8 @@
         for (const y of got) {
           if (!y || typeof y.code !== 'string') continue;
           const x = list.find(z => z.code === y.code);
-          if (x) { if (y.cost) x.cost = y.cost; if (y.lots) x.lots = y.lots; } else { list.push({ code: y.code, added: y.added || TODAY, cost: y.cost || null, lots: y.lots || null }); added++; }
+          const sh = mySharesOf(y);
+          if (x) { if (y.cost) x.cost = y.cost; if (sh) x.shares = sh; } else { list.push({ code: y.code, added: y.added || TODAY, cost: y.cost || null, shares: sh }); added++; }
         }
         total = list.length;
       }).then(() => alert(`還原完成：新增 ${added} 檔，現在共 ${total} 檔。`));

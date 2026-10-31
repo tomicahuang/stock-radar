@@ -608,7 +608,7 @@ tbody tr:hover > td { background-color: var(--row-hover-cell); }
 .my-table td { vertical-align: middle; }
 .my-table .nowrap { white-space: nowrap; }
 .my-in { width: 92px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-family: inherit; font-size: 13px; text-align: right; }
-.my-in.short { width: 64px; }
+.my-in.short { width: 80px; }
 .my-total { margin: 10px 0 0; font-weight: 600; }
 .my-sync { font-size: 12px; margin: 0 0 10px; color: color-mix(in srgb, #16a34a 80%, var(--text)); }
 #mySync.bad { color: var(--up); }
