@@ -888,16 +888,42 @@
       </div>`;
   }
 
+  // Previous US session; TSMC ADR premium = ADR × USD/TWD ÷ 5 shares vs. the Taiwan close.
+  function usCard() {
+    const U = window.US_DATA;
+    if (!U || !U.ndq) return '';
+    const one = k => {
+      const s = U[k];
+      if (!s || !s.c || s.c.length < 2) return null;
+      const n = s.c.length, c = s.c[n - 1];
+      const ma = n >= 20 ? s.c.slice(n - 20).reduce((a, b) => a + b, 0) / 20 : null;
+      return { c, chg: c / s.c[n - 2] - 1, ma, date: s.d[n - 1] };
+    };
+    const rows = [['ndq', '那斯達克'], ['sox', '費城半導體'], ['spx', 'S&P 500'], ['dji', '道瓊']]
+      .map(([k, n]) => [n, one(k)]).filter(([, x]) => x);
+    const t = one('tsm'), fx = one('twd'), tw = byCode['2330'];
+    const prem = t && fx && tw && tw.close ? t.c * fx.c / 5 / tw.close - 1 : null;
+    const date = (one('ndq') || {}).date;
+    const row = ([n, x]) => `<span class="us-n">${n}</span>
+      <span class="us-v ${cls(x.chg)}">${x.c.toLocaleString('zh-TW', { maximumFractionDigits: 0 })} <small>${fmtPct(x.chg)}</small></span>
+      <span class="us-t ${x.ma == null ? 'flat' : x.c >= x.ma ? 'up' : 'down'}">${x.ma == null ? '' : x.c >= x.ma ? '月線上' : '月線下'}</span>`;
+    return `
+      <div class="mkt us">
+        <div class="lbl">美股 前一晚收盤${date ? `（${md(date)}）` : ''}</div>
+        <div class="us-grid">${rows.map(row).join('')}</div>
+        ${t ? `<div class="sub">台積電 ADR ${t.c.toFixed(2)} <span class="${cls(t.chg)}">${fmtPct(t.chg)}</span>${prem == null ? '' : `・溢價 <span class="${cls(prem)}">${fmtPct(prem, 1)}</span>`}</div>` : ''}
+      </div>`;
+  }
+
   function renderMarket() {
     const items = [];
     if (DATA.index && DATA.index.taiex) items.push(['加權指數', seriesBias(DATA.index.taiex)]);
-    if (DATA.index && DATA.index.elec) items.push(['電子類指數', seriesBias(DATA.index.elec)]);
     $('#market').innerHTML = items.filter(([, x]) => x.c != null).map(([n, x]) => `
       <div class="mkt">
         <div class="lbl">${n}</div>
         <div class="val ${cls(x.chg)}">${x.c.toLocaleString('zh-TW', { maximumFractionDigits: 2 })} <small>${fmtPct(x.chg)}</small></div>
         <div class="sub ${cls(x.bias)}">月線 ${x.ma ? x.ma.toFixed(0) : '–'}・乖離 ${fmtPct(x.bias)}・${x.bias < 0 ? '月線下' : '月線上'}</div>
-      </div>`).join('') + futCard();
+      </div>`).join('') + usCard() + futCard();
     $('#meta').innerHTML = `資料日期 <b>${dates[LAST]}</b><br>共 ${T} 個交易日（${dates[0]} 起）<br>更新於 ${DATA.generatedAt}`;
   }
 

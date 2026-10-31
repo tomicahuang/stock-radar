@@ -361,3 +361,7 @@ Write-Host ''
 Write-Host 'Stock ex-rights / ex-dividend dates and market holidays ...'
 try { & (Join-Path $root 'update-dividend.ps1') }
 catch { Write-Host ("Ex-rights data skipped: {0}" -f $_.Exception.Message) }
+Write-Host ''
+Write-Host 'US market (previous session) ...'
+try { & (Join-Path $root 'update-us.ps1') }
+catch { Write-Host ("US data skipped: {0}" -f $_.Exception.Message) }
