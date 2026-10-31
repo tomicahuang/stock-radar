@@ -609,6 +609,7 @@ tbody tr:hover > td { background-color: var(--row-hover-cell); }
 .tv-chip { --v: #d97706; display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--v); border: 1px solid color-mix(in srgb, var(--v) 50%, var(--line)); background: color-mix(in srgb, var(--v) 10%, var(--panel)); }
 .tv-chip.bull { --v: var(--up); }
 .tv-chip.bear { --v: var(--down); }
+.btn.my-view { background: #7c3aed; border-color: #7c3aed; color: #fff; font-weight: 700; white-space: nowrap; }
 .btn.my-add { background: #7c3aed; border-color: #7c3aed; color: #fff; font-weight: 700; }
 .btn.my-added { border-color: #7c3aed; color: color-mix(in srgb, #7c3aed 80%, var(--text)); }
 

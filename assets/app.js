@@ -1833,7 +1833,7 @@
     const rows = list.map(x => {
       const st = anyCode(x.code);
       if (!st) {
-        return `<tr><td class="l">${esc(x.code)}</td><td class="l" colspan="8"><span class="flat">目前資料裡找不到這檔（可能已下市或代號有誤）</span></td>
+        return `<tr><td class="l">${esc(x.code)}</td><td class="l" colspan="9"><span class="flat">目前資料裡找不到這檔（可能已下市或代號有誤）</span></td>
           <td class="l"><button class="btn small" type="button" data-my-del="${esc(x.code)}">移除</button></td></tr>`;
       }
       const tr = classifyTrend(st);
@@ -1845,18 +1845,18 @@
         <td class="l"><a href="#" data-pick="${st.code}"><span class="code">${st.code}</span><span class="name">${esc(st.name)}</span></a></td>
         <td>${fmtP(st.close)}</td><td>${pctCell(st.dayChg)}</td>
         <td class="l"><span class="tv-chip ${tr.tone}">${tr.name}</span></td>
+        <td class="l"><button class="btn small my-view" type="button" data-pick="${st.code}">看趨勢</button></td>
         <td class="l">${celebBadges(st) || '<span class="flat">–</span>'}</td>
         <td><input class="my-in" type="number" step="0.01" min="0" inputmode="decimal" data-my-cost="${st.code}" value="${cost ?? ''}" placeholder="買進價"></td>
         <td><input class="my-in short" type="number" step="1" min="0" inputmode="numeric" data-my-lots="${st.code}" value="${lots ?? ''}" placeholder="張"></td>
         <td>${pl == null ? '<span class="flat">–</span>' : pctCell(pl)}</td>
         <td>${amt == null ? '<span class="flat">–</span>' : `<span class="${cls(amt)}">${(amt > 0 ? '+' : '') + Math.round(amt).toLocaleString('zh-TW')}</span>`}</td>
-        <td class="l nowrap"><button class="btn small" type="button" data-pick="${st.code}">看趨勢</button>
-          <button class="btn small" type="button" data-my-del="${st.code}">移除</button></td>
+        <td class="l nowrap"><button class="btn small" type="button" data-my-del="${st.code}">移除</button></td>
       </tr>`;
     }).join('');
     const tot = sumCost ? sumNow - sumCost : null;
     $('#myList').innerHTML = `<div class="table-wrap mini my-table"><table><thead><tr>
-      <th class="l">股票</th><th>收盤</th><th>日漲跌</th><th class="l">型態</th><th class="l">名人</th><th>買進價</th><th>張數</th><th>損益%</th><th>損益(元)</th><th class="l"></th>
+      <th class="l">股票</th><th>收盤</th><th>日漲跌</th><th class="l">型態</th><th class="l"></th><th class="l">名人</th><th>買進價</th><th>張數</th><th>損益%</th><th>損益(元)</th><th class="l"></th>
       </tr></thead><tbody>${rows}</tbody></table></div>
       ${tot == null ? '' : `<p class="my-total">有填買進價與張數的合計：成本 ${Math.round(sumCost).toLocaleString('zh-TW')} 元，市值 ${Math.round(sumNow).toLocaleString('zh-TW')} 元，
         損益 <span class="${cls(tot)}">${(tot > 0 ? '+' : '') + Math.round(tot).toLocaleString('zh-TW')} 元（${fmtPct(tot / sumCost)}）</span>（未含手續費與稅）</p>`}`;
