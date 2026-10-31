@@ -1365,7 +1365,7 @@
     etfState.months = new Set([...etfState.months].filter(m => m >= 1 && m <= 12));
     if (!ETF_SORTS.includes(etfState.sort)) etfState.sort = 'yield';
     if (!ETF_TOPS.includes(etfState.topN)) etfState.topN = 50;
-    if (!['stock', 'etf', 'trend'].includes(etfState.view)) etfState.view = 'stock';
+    if (!['stock', 'etf', 'trend', 'trendB'].includes(etfState.view)) etfState.view = 'stock';
   })();
 
   function etfUniverse() {
@@ -1684,13 +1684,14 @@
   }
 
   function setView(v) {
-    etfState.view = ['etf', 'trend'].includes(v) ? v : 'stock';
+    etfState.view = ['etf', 'trend', 'trendB'].includes(v) ? v : 'stock';
+    const trendOn = etfState.view === 'trend' || etfState.view === 'trendB';
     $('#stockView').classList.toggle('hidden', etfState.view !== 'stock');
     $('#etfView').classList.toggle('hidden', etfState.view !== 'etf');
-    $('#trendView').classList.toggle('hidden', etfState.view !== 'trend');
+    $('#trendView').classList.toggle('hidden', !trendOn);
     $$('#viewTabs button').forEach(b => b.classList.toggle('on', b.dataset.view === etfState.view));
     if (etfState.view === 'etf') updateEtf();
-    else { if (etfState.view === 'trend') showTrend(); saveEtfState(); }
+    else { if (trendOn) showTrend(); saveEtfState(); }
   }
 
   // ------------------------------------------------------------------ single-stock trend (password page)
@@ -1707,8 +1708,11 @@
   const anyList = () => stocks.concat(etfs);
   let trendCode = null;
 
+  // TypeA (view 'trend') asks for the password; TypeB (view 'trendB') is the same page without it.
   function showTrend() {
-    const ok = trendUnlocked();
+    const typeB = etfState.view === 'trendB';
+    const ok = typeB || trendUnlocked();
+    $('.trend-lockbar').classList.toggle('hidden', typeB);
     $('#trendLock').classList.toggle('hidden', ok);
     $('#trendMain').classList.toggle('hidden', !ok);
     if (!ok) { setTimeout(() => $('#trendPass').focus(), 0); return; }
