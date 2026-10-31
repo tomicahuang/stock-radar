@@ -1859,7 +1859,7 @@
     if (!isTypeA()) return;
     const list = loadMy();
     if (!list.length) {
-      $('#myList').innerHTML = '<div class="empty">還沒有加入股票。先在上方輸入代號按「分析」，再按「加入我的持股」。</div>';
+      $('#myList').innerHTML = '<div class="empty">還沒有加入股票。先在上方輸入代號按「分析」，再按「加入我們的持股」。</div>';
       return;
     }
     let sumCost = 0, sumNow = 0;
@@ -1898,8 +1898,8 @@
   function myButton(code) {
     if (!isTypeA()) return '';
     return inMy(code)
-      ? `<button class="btn small my-added" type="button" data-my-del="${code}">✓ 已在我的持股（點此移除）</button>`
-      : `<button class="btn small my-add" type="button" data-my-add="${code}">＋ 加入我的持股</button>`;
+      ? `<button class="btn small my-added" type="button" data-my-del="${code}">✓ 已在我們的持股（點此移除）</button>`
+      : `<button class="btn small my-add" type="button" data-my-add="${code}">＋ 加入我們的持股</button>`;
   }
 
   function renderTrendPicks() {
@@ -2102,7 +2102,7 @@
     $('#myExport').addEventListener('click', e => {
       e.preventDefault();
       const list = loadMy();
-      if (!list.length) { alert('我的持股目前是空的，沒有東西可以備份。'); return; }
+      if (!list.length) { alert('我們的持股目前是空的，沒有東西可以備份。'); return; }
       const code = 'CRIA1:' + btoa(unescape(encodeURIComponent(JSON.stringify(list))));
       if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {});
       prompt('備份碼已複製（若沒有自動複製，請全選下面這段）。到另一台裝置的 TypeA「從備份還原」貼上即可：', code);
@@ -2150,7 +2150,7 @@
       const del = e.target.closest('[data-my-del]');
       if (del) {
         const code = del.dataset.myDel, st = anyCode(code);
-        if (!confirm(`確定把 ${code}${st ? ' ' + st.name : ''} 從我的持股移除？`)) return;
+        if (!confirm(`確定把 ${code}${st ? ' ' + st.name : ''} 從我們的持股移除？`)) return;
         mutateMy(list => { const i = list.findIndex(x => x.code === code); if (i >= 0) list.splice(i, 1); });
         return;
       }
