@@ -597,6 +597,18 @@ tbody tr:hover > td { background-color: var(--row-hover-cell); }
 .trend-grid .posts { margin-bottom: 10px; border-bottom: 1px solid var(--line); }
 .trend-grid .hint { display: block; margin: 8px 0 4px; }
 @media (max-width: 900px) { .trend-grid { grid-template-columns: 1fr; } }
+.my-panel { border-top: 3px solid #7c3aed; }
+.my-tools { display: flex; gap: 4px; }
+.my-table td { vertical-align: middle; }
+.my-table .nowrap { white-space: nowrap; }
+.my-in { width: 92px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-family: inherit; font-size: 13px; text-align: right; }
+.my-in.short { width: 64px; }
+.my-total { margin: 10px 0 0; font-weight: 600; }
+.tv-chip { --v: #d97706; display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--v); border: 1px solid color-mix(in srgb, var(--v) 50%, var(--line)); background: color-mix(in srgb, var(--v) 10%, var(--panel)); }
+.tv-chip.bull { --v: var(--up); }
+.tv-chip.bear { --v: var(--down); }
+.btn.my-add { background: #7c3aed; border-color: #7c3aed; color: #fff; font-weight: 700; }
+.btn.my-added { border-color: #7c3aed; color: color-mix(in srgb, #7c3aed 80%, var(--text)); }
 
 /* ---------- ETF ---------- */
 .seg.mini { vertical-align: middle; margin: 0 4px; }

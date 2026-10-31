@@ -1720,6 +1720,7 @@
       $('#trendList').innerHTML = anyList().map(s => `<option value="${s.code} ${esc(s.name)}"></option>`).join('');
     }
     renderTrendPicks();
+    renderMy();
     if (trendCode && anyCode(trendCode)) renderTrend(anyCode(trendCode));
   }
 
@@ -1729,6 +1730,63 @@
   function pushRecent(code) {
     const a = [code, ...recentCodes().filter(c => c !== code)].slice(0, 8);
     try { localStorage.setItem(TREND_RECENT, JSON.stringify(a)); } catch (e) { /* not kept */ }
+  }
+
+  // "My holdings" for TypeA: kept only in this browser (localStorage), never uploaded.
+  const MY_KEY = 'stock-radar-my-stocks';
+  function loadMy() {
+    try { const a = JSON.parse(localStorage.getItem(MY_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => x && typeof x.code === 'string') : []; } catch (e) { return []; }
+  }
+  function saveMy(list) { try { localStorage.setItem(MY_KEY, JSON.stringify(list)); } catch (e) { /* not kept */ } }
+  const inMy = code => loadMy().some(x => x.code === code);
+  const isTypeA = () => etfState.view === 'trend';
+
+  function renderMy() {
+    $('#myPanel').classList.toggle('hidden', !isTypeA());
+    if (!isTypeA()) return;
+    const list = loadMy();
+    if (!list.length) {
+      $('#myList').innerHTML = '<div class="empty">還沒有加入股票。先在上方輸入代號按「分析」，再按「加入我的持股」。</div>';
+      return;
+    }
+    let sumCost = 0, sumNow = 0;
+    const rows = list.map(x => {
+      const st = anyCode(x.code);
+      if (!st) {
+        return `<tr><td class="l">${esc(x.code)}</td><td class="l" colspan="8"><span class="flat">目前資料裡找不到這檔（可能已下市或代號有誤）</span></td>
+          <td class="l"><button class="btn small" type="button" data-my-del="${esc(x.code)}">移除</button></td></tr>`;
+      }
+      const tr = classifyTrend(st);
+      const cost = +x.cost > 0 ? +x.cost : null, lots = +x.lots > 0 ? +x.lots : null;
+      const pl = cost ? st.close / cost - 1 : null;
+      const amt = cost && lots ? (st.close - cost) * lots * 1000 : null;
+      if (cost && lots) { sumCost += cost * lots * 1000; sumNow += st.close * lots * 1000; }
+      return `<tr>
+        <td class="l"><a href="#" data-pick="${st.code}"><span class="code">${st.code}</span><span class="name">${esc(st.name)}</span></a></td>
+        <td>${fmtP(st.close)}</td><td>${pctCell(st.dayChg)}</td>
+        <td class="l"><span class="tv-chip ${tr.tone}">${tr.name}</span></td>
+        <td class="l">${celebBadges(st) || '<span class="flat">–</span>'}</td>
+        <td><input class="my-in" type="number" step="0.01" min="0" inputmode="decimal" data-my-cost="${st.code}" value="${cost ?? ''}" placeholder="買進價"></td>
+        <td><input class="my-in short" type="number" step="1" min="0" inputmode="numeric" data-my-lots="${st.code}" value="${lots ?? ''}" placeholder="張"></td>
+        <td>${pl == null ? '<span class="flat">–</span>' : pctCell(pl)}</td>
+        <td>${amt == null ? '<span class="flat">–</span>' : `<span class="${cls(amt)}">${(amt > 0 ? '+' : '') + Math.round(amt).toLocaleString('zh-TW')}</span>`}</td>
+        <td class="l nowrap"><button class="btn small" type="button" data-pick="${st.code}">看趨勢</button>
+          <button class="btn small" type="button" data-my-del="${st.code}">移除</button></td>
+      </tr>`;
+    }).join('');
+    const tot = sumCost ? sumNow - sumCost : null;
+    $('#myList').innerHTML = `<div class="table-wrap mini my-table"><table><thead><tr>
+      <th class="l">股票</th><th>收盤</th><th>日漲跌</th><th class="l">型態</th><th class="l">名人</th><th>買進價</th><th>張數</th><th>損益%</th><th>損益(元)</th><th class="l"></th>
+      </tr></thead><tbody>${rows}</tbody></table></div>
+      ${tot == null ? '' : `<p class="my-total">有填買進價與張數的合計：成本 ${Math.round(sumCost).toLocaleString('zh-TW')} 元，市值 ${Math.round(sumNow).toLocaleString('zh-TW')} 元，
+        損益 <span class="${cls(tot)}">${(tot > 0 ? '+' : '') + Math.round(tot).toLocaleString('zh-TW')} 元（${fmtPct(tot / sumCost)}）</span>（未含手續費與稅）</p>`}`;
+  }
+
+  function myButton(code) {
+    if (!isTypeA()) return '';
+    return inMy(code)
+      ? `<button class="btn small my-added" type="button" data-my-del="${code}">✓ 已在我的持股（點此移除）</button>`
+      : `<button class="btn small my-add" type="button" data-my-add="${code}">＋ 加入我的持股</button>`;
   }
 
   function renderTrendPicks() {
@@ -1874,6 +1932,7 @@
           <span class="flat">${isEtf ? 'ETF・' + esc(st.etf.iss || '') : st.indName}${st.sub ? '・' + esc(st.sub.label) : ''}</span>
           <span class="px ${cls(st.dayChg)}">${fmtP(st.close)} <small>${fmtPct(st.dayChg)}</small></span>
           <span class="links">${isEtf ? etfLinks(st.code) : links(st.code)}</span>
+          ${myButton(st.code)}
         </div>
         <div class="trend-verdict ${tr.tone}">
           <div class="tv-name">${tr.name}</div>
@@ -1912,12 +1971,48 @@
         try { localStorage.setItem(TREND_KEY, TREND_HASH); } catch (err) { /* only this visit */ }
         $('#trendPass').value = '';
         $('#trendLockMsg').textContent = '';
-        if (!trendUnlocked()) { $('#trendLock').classList.add('hidden'); $('#trendMain').classList.remove('hidden'); renderTrendPicks(); return; }
+        if (!trendUnlocked()) { $('#trendLock').classList.add('hidden'); $('#trendMain').classList.remove('hidden'); renderTrendPicks(); renderMy(); return; }
         showTrend();
       } else {
         $('#trendLockMsg').textContent = '密碼不正確，請再試一次。';
         $('#trendPass').select();
       }
+    });
+    $('#myList').addEventListener('change', e => {
+      const t = e.target, code = t.dataset.myCost || t.dataset.myLots;
+      if (!code) return;
+      const list = loadMy(), x = list.find(y => y.code === code);
+      if (!x) return;
+      const v = t.value === '' ? null : +t.value;
+      if (t.dataset.myCost) x.cost = v > 0 ? v : null; else x.lots = v > 0 ? v : null;
+      saveMy(list);
+      renderMy();
+    });
+    $('#myExport').addEventListener('click', e => {
+      e.preventDefault();
+      const list = loadMy();
+      if (!list.length) { alert('我的持股目前是空的，沒有東西可以備份。'); return; }
+      const code = 'CRIA1:' + btoa(unescape(encodeURIComponent(JSON.stringify(list))));
+      if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {});
+      prompt('備份碼已複製（若沒有自動複製，請全選下面這段）。到另一台裝置的 TypeA「從備份還原」貼上即可：', code);
+    });
+    $('#myImport').addEventListener('click', e => {
+      e.preventDefault();
+      const s = (prompt('貼上備份碼：') || '').trim();
+      if (!s) return;
+      let got;
+      try { got = JSON.parse(decodeURIComponent(escape(atob(s.replace(/^CRIA1:/, ''))))); } catch (err) { got = null; }
+      if (!Array.isArray(got)) { alert('備份碼看不懂，請確認是完整複製的那一段。'); return; }
+      const list = loadMy();
+      let added = 0;
+      for (const y of got) {
+        if (!y || typeof y.code !== 'string') continue;
+        const x = list.find(z => z.code === y.code);
+        if (x) { if (y.cost) x.cost = y.cost; if (y.lots) x.lots = y.lots; } else { list.push({ code: y.code, added: y.added || TODAY, cost: y.cost || null, lots: y.lots || null }); added++; }
+      }
+      saveMy(list);
+      renderMy();
+      alert(`還原完成：新增 ${added} 檔，現在共 ${list.length} 檔。`);
     });
     $('#trendLogout').addEventListener('click', e => {
       e.preventDefault();
@@ -1935,8 +2030,27 @@
         : '找不到這檔，請確認代號或名稱（只有上市股票與上市 ETF）。'}</div></section>`;
     });
     $('#trendView').addEventListener('click', e => {
+      const add = e.target.closest('[data-my-add]');
+      if (add) {
+        const list = loadMy();
+        if (!list.some(x => x.code === add.dataset.myAdd)) list.unshift({ code: add.dataset.myAdd, added: TODAY });
+        saveMy(list);
+        renderMy();
+        if (trendCode && anyCode(trendCode)) renderTrend(anyCode(trendCode));
+        return;
+      }
+      const del = e.target.closest('[data-my-del]');
+      if (del) {
+        const code = del.dataset.myDel, st = anyCode(code);
+        if (!confirm(`確定把 ${code}${st ? ' ' + st.name : ''} 從我的持股移除？`)) return;
+        saveMy(loadMy().filter(x => x.code !== code));
+        renderMy();
+        if (trendCode && anyCode(trendCode)) renderTrend(anyCode(trendCode));
+        return;
+      }
       const b = e.target.closest('[data-pick]');
       if (!b) return;
+      e.preventDefault();
       const st = anyCode(b.dataset.pick);
       if (!st) return;
       $('#trendQ').value = `${st.code} ${st.name}`;
