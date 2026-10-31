@@ -1863,7 +1863,7 @@
       return;
     }
     let sumCost = 0, sumNow = 0;
-    const rows = list.map(x => {
+    const rows = list.map((x, i) => {
       const st = anyCode(x.code);
       if (!st) {
         return `<tr><td class="l">${esc(x.code)}</td><td class="l" colspan="9"><span class="flat">目前資料裡找不到這檔（可能已下市或代號有誤）</span></td>
@@ -1884,7 +1884,9 @@
         <td><input class="my-in short" type="number" step="1" min="0" inputmode="numeric" data-my-shares="${st.code}" value="${shares ?? ''}" placeholder="股"></td>
         <td>${pl == null ? '<span class="flat">–</span>' : pctCell(pl)}</td>
         <td>${amt == null ? '<span class="flat">–</span>' : `<span class="${cls(amt)}">${(amt > 0 ? '+' : '') + Math.round(amt).toLocaleString('zh-TW')}</span>`}</td>
-        <td class="l nowrap"><button class="btn small" type="button" data-my-del="${st.code}">移除</button></td>
+        <td class="l nowrap"><button class="btn small" type="button" data-my-del="${st.code}">移除</button>
+          <button class="btn small" type="button" data-my-move="-1" data-code="${st.code}"${i === 0 ? ' disabled' : ''}>上移</button>
+          <button class="btn small" type="button" data-my-move="1" data-code="${st.code}"${i === list.length - 1 ? ' disabled' : ''}>下移</button></td>
       </tr>`;
     }).join('');
     const tot = sumCost ? sumNow - sumCost : null;
@@ -2152,6 +2154,16 @@
         const code = del.dataset.myDel, st = anyCode(code);
         if (!confirm(`確定把 ${code}${st ? ' ' + st.name : ''} 從我們的持股移除？`)) return;
         mutateMy(list => { const i = list.findIndex(x => x.code === code); if (i >= 0) list.splice(i, 1); });
+        return;
+      }
+      const mv = e.target.closest('[data-my-move]');
+      if (mv) {
+        const code = mv.dataset.code, dir = +mv.dataset.myMove;
+        mutateMy(list => {
+          const i = list.findIndex(x => x.code === code), j = i + dir;
+          if (i < 0 || j < 0 || j >= list.length) return;
+          [list[i], list[j]] = [list[j], list[i]];
+        });
         return;
       }
       if (e.target.closest('#mySyncNow')) { e.preventDefault(); syncPull(); return; }

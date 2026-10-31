@@ -607,6 +607,7 @@ tbody tr:hover > td { background-color: var(--row-hover-cell); }
 .my-tools { display: flex; gap: 4px; }
 .my-table td { vertical-align: middle; }
 .my-table .nowrap { white-space: nowrap; }
+.my-table .btn[disabled] { opacity: .35; cursor: default; }
 .my-in { width: 92px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-family: inherit; font-size: 13px; text-align: right; }
 .my-in.short { width: 80px; }
 .my-total { margin: 10px 0 0; font-weight: 600; }
