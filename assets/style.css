@@ -529,6 +529,10 @@ tbody tr:hover > td { background-color: var(--row-hover-cell); }
 .badge.du { color: var(--du); border-color: var(--du); background: #05261b; }
 .links a { margin-left: 6px; font-size: 12px; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
+.miss-list { list-style: none; padding: 0; margin: 12px auto 0; max-width: 760px; text-align: left; display: grid; gap: 8px; }
+.miss-list li { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; color: var(--text); line-height: 1.6; }
+.miss-list .btn, .miss-btns .btn { margin-left: 6px; }
+.miss-btns { margin-top: 10px; }
 .rank { color: var(--muted); }
 
 /* ---------- drawer ---------- */

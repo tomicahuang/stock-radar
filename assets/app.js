@@ -776,6 +776,52 @@
     return `MACD ${def}（${within}）：符合 ${res.total} 檔，${pick(sort)}`;
   }
 
+  // Search only narrows the current tab's results, so explain why a searched stock is missing.
+  function searchMiss() {
+    const q = state.query.trim().toLowerCase();
+    const hit = x => x.code.toLowerCase().includes(q) || x.name.toLowerCase().includes(q);
+    const found = stocks.filter(hit).slice(0, 5);
+    const activeTab = $('.tab.active'), tab = activeTab ? activeTab.dataset.label : '';
+    if (!found.length) {
+      const etf = etfs.filter(hit).slice(0, 3);
+      if (etf.length) {
+        return `「${esc(state.query)}」是 ETF（${etf.map(e => `${e.code} ${esc(e.name)}`).join('、')}），請切到上方「ETF 配息・排行」畫面查詢。` +
+          `<div class="miss-btns">${etf.map(e => `<button class="btn small" data-open="${e.code}">看 ${e.code} K 線與配息</button>`).join('')}</div>`;
+      }
+      return `找不到「${esc(state.query)}」，請確認代號或名稱（本頁只有上市股票）。`;
+    }
+    const why = st => {
+      const r = [];
+      if (!state.groups.has(st.grp)) r.push(`屬於「${GROUPS[st.grp]}」，但上方類股範圍沒有勾選`);
+      else if (!state.industries.has(st.ind)) r.push(`產業「${st.indName}」沒有選取`);
+      if ((st.vol20 || 0) < state.minVol) r.push(`20 日均量 ${fmtInt(st.vol20)} 張，低於門檻 ${state.minVol.toLocaleString()} 張`);
+      if (state.celebOnly && !st.mentions.length) r.push('已勾「只看名人提及股」，這檔沒有名人提及');
+      if (state.subs.size && ![...state.subs].some(k => st.subKeys.has(k))) r.push('不在選取的細產業內');
+      if (!r.length && state.mode === 'inst' && instLast >= 0) {
+        const s = instStreak(st, state.instWho);
+        if (s.n < state.instDays) r.push(`${WHO[state.instWho]}連買只有 ${s.n} 天（需 ≥ ${state.instDays} 天）`);
+        if (state.instBelow && !st.below) r.push('目前在月線上（已勾「只看月線下」）');
+      }
+      if (!r.length && (state.mode === 'break' || state.mode === 'up')) {
+        const up = state.mode === 'up', n = up ? state.upMa : state.breakMa, days = up ? state.upDays : state.breakDays;
+        if (findMaCross(st, n, days, up ? 1 : -1) < 0) r.push(`${daysLabel(days)}沒有${up ? '站上' : '跌破'}${MA_NAME[n]}`);
+        else r.push(up ? `站上後又跌回${MA_NAME[n]}下，或不符合勾選的條件` : `跌破後又站回${MA_NAME[n]}，或不符合勾選的條件`);
+      }
+      if (!r.length && state.mode === 'macd') {
+        if (findCross(st[state.macdType === 'osc' ? 'osc' : 'dif'], state.macdWithin) < 0) r.push(`${daysLabel(state.macdWithin)}沒有 MACD 翻正`);
+      }
+      if (!r.length && state.mode === 'div') {
+        if (!st.sNext) r.push('近一年沒有除權息紀錄');
+        else if (dayDiff(TODAY, st.sNext.ex) > state.divWithin) r.push(`下次除權息 ${st.sNext.ex}${st.sNext.est ? '（預估）' : ''}，不在 ${state.divWithin} 天內`);
+      }
+      if (!r.length) r.push(`不符合目前「${tab}」分頁的條件`);
+      return r.join('；');
+    };
+    return `搜尋只會在目前分頁的篩選結果中找，以下股票這次沒有入選：` +
+      `<ul class="miss-list">${found.map(st => `<li><b>${st.code} ${esc(st.name)}</b>：${why(st)}
+        <button class="btn small" data-open="${st.code}">直接看 K 線與資料</button></li>`).join('')}</ul>`;
+  }
+
   function renderTable(res) {
     const cols = colsFor(state.mode);
     let rows = res.rows.slice();
@@ -798,7 +844,7 @@
       const msg = state.mode === 'inst' && instLast < 0
         ? '尚無法人買賣超資料，請重新執行「更新資料.bat」。'
         : '沒有符合條件的股票，試著放寬天數、期間或均量門檻。';
-      $('#tableWrap').innerHTML = `<div class="empty">${msg}</div>`;
+      $('#tableWrap').innerHTML = `<div class="empty">${state.query.trim() ? searchMiss() : msg}</div>`;
       return;
     }
     const head = cols.map(c => {
@@ -1996,6 +2042,8 @@
         update();
         return;
       }
+      const ob = e.target.closest('[data-open]');
+      if (ob) { openDrawer(ob.dataset.open); return; }
       if (e.target.closest('a')) return;
       const tr = e.target.closest('tr[data-code]');
       if (tr) openDrawer(tr.dataset.code);
