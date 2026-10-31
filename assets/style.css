@@ -604,7 +604,7 @@ tbody tr:hover > td { background-color: var(--row-hover-cell); }
 .my-in { width: 92px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-family: inherit; font-size: 13px; text-align: right; }
 .my-in.short { width: 64px; }
 .my-total { margin: 10px 0 0; font-weight: 600; }
-.my-sync { font-size: 12px; margin: -4px 0 10px; color: color-mix(in srgb, #16a34a 80%, var(--text)); }
+.my-sync { font-size: 12px; margin: 0 0 10px; color: color-mix(in srgb, #16a34a 80%, var(--text)); }
 #mySync.bad { color: var(--up); }
 .tv-chip { --v: #d97706; display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--v); border: 1px solid color-mix(in srgb, var(--v) 50%, var(--line)); background: color-mix(in srgb, var(--v) 10%, var(--panel)); }
 .tv-chip.bull { --v: var(--up); }
