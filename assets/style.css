@@ -566,6 +566,37 @@ tbody tr:hover > td { background-color: var(--row-hover-cell); }
 .view-tabs button:hover { border-color: var(--accent); }
 .view-tabs button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 
+/* ---------- single-stock trend ---------- */
+.trend-lock { max-width: 460px; margin: 30px auto; text-align: center; border-top: 3px solid #7c3aed; }
+.trend-lock h2 { font-size: 18px; margin-bottom: 6px; }
+.lock-form { display: flex; gap: 8px; justify-content: center; margin-top: 12px; }
+.lock-form input { flex: 1; max-width: 220px; background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font-size: 16px; font-family: inherit; letter-spacing: 4px; text-align: center; }
+.lock-msg { color: var(--up); font-size: 13px; min-height: 20px; margin-top: 8px; }
+.panel.controls.trend-controls { --pc: #7c3aed; }
+.trend-search { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.trend-search input[type="search"] { font-size: 15px; padding: 9px 12px; }
+.trend-search .btn { background: #7c3aed; border-color: #7c3aed; color: #fff; font-weight: 700; padding: 9px 22px; }
+.trend-picks { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.pick-row { display: flex; gap: 10px; align-items: flex-start; }
+.pick-lbl { flex: 0 0 auto; font-size: 12px; color: color-mix(in srgb, #7c3aed 75%, var(--text)); font-weight: 600; padding-top: 4px; }
+.trend-lockbar { margin-top: 10px; text-align: right; }
+.trend-cands { justify-content: center; margin-top: 10px; }
+.trend-card .dr-head { margin-bottom: 10px; }
+.trend-verdict { --v: #d97706; border: 1px solid color-mix(in srgb, var(--v) 45%, var(--line)); border-left: 6px solid var(--v); border-radius: 10px; padding: 10px 14px; background: color-mix(in srgb, var(--v) 10%, var(--panel)); }
+.trend-verdict.bull { --v: var(--up); }
+.trend-verdict.bear { --v: var(--down); }
+.tv-name { font-size: 22px; font-weight: 800; color: var(--v); }
+.tv-desc { margin-top: 4px; line-height: 1.6; }
+.trend-sum { margin: 10px 0 4px; font-weight: 600; line-height: 1.6; }
+.trend-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 6px; }
+.trend-grid h3 { font-size: 14px; margin: 10px 0 6px; }
+.trend-facts { margin: 0 0 8px; padding-left: 18px; line-height: 1.7; }
+.trend-grid .posts { max-height: 260px; }
+.trend-grid .posts .badge { margin-right: 4px; }
+.trend-grid .posts { margin-bottom: 10px; border-bottom: 1px solid var(--line); }
+.trend-grid .hint { display: block; margin: 8px 0 4px; }
+@media (max-width: 900px) { .trend-grid { grid-template-columns: 1fr; } }
+
 /* ---------- ETF ---------- */
 .seg.mini { vertical-align: middle; margin: 0 4px; }
 .seg.mini button { padding: 3px 9px; font-size: 12px; }

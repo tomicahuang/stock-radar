@@ -1365,7 +1365,7 @@
     etfState.months = new Set([...etfState.months].filter(m => m >= 1 && m <= 12));
     if (!ETF_SORTS.includes(etfState.sort)) etfState.sort = 'yield';
     if (!ETF_TOPS.includes(etfState.topN)) etfState.topN = 50;
-    if (etfState.view !== 'etf') etfState.view = 'stock';
+    if (!['stock', 'etf', 'trend'].includes(etfState.view)) etfState.view = 'stock';
   })();
 
   function etfUniverse() {
@@ -1684,11 +1684,263 @@
   }
 
   function setView(v) {
-    etfState.view = v === 'etf' ? 'etf' : 'stock';
+    etfState.view = ['etf', 'trend'].includes(v) ? v : 'stock';
     $('#stockView').classList.toggle('hidden', etfState.view !== 'stock');
     $('#etfView').classList.toggle('hidden', etfState.view !== 'etf');
+    $('#trendView').classList.toggle('hidden', etfState.view !== 'trend');
     $$('#viewTabs button').forEach(b => b.classList.toggle('on', b.dataset.view === etfState.view));
-    if (etfState.view === 'etf') updateEtf(); else saveEtfState();
+    if (etfState.view === 'etf') updateEtf();
+    else { if (etfState.view === 'trend') showTrend(); saveEtfState(); }
+  }
+
+  // ------------------------------------------------------------------ single-stock trend (password page)
+  // Light lock only: the site is public, so this keeps casual visitors out but is not real security.
+  const TREND_HASH = '5d7c2b2e';
+  const TREND_KEY = 'stock-radar-trend-unlock';
+  const TREND_RECENT = 'stock-radar-trend-recent';
+  function fnv(s) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16);
+  }
+  const trendUnlocked = () => { try { return localStorage.getItem(TREND_KEY) === TREND_HASH; } catch (e) { return false; } };
+  const anyList = () => stocks.concat(etfs);
+  let trendCode = null;
+
+  function showTrend() {
+    const ok = trendUnlocked();
+    $('#trendLock').classList.toggle('hidden', ok);
+    $('#trendMain').classList.toggle('hidden', !ok);
+    if (!ok) { setTimeout(() => $('#trendPass').focus(), 0); return; }
+    if (!$('#trendList').children.length) {
+      $('#trendList').innerHTML = anyList().map(s => `<option value="${s.code} ${esc(s.name)}"></option>`).join('');
+    }
+    renderTrendPicks();
+    if (trendCode && anyCode(trendCode)) renderTrend(anyCode(trendCode));
+  }
+
+  function recentCodes() {
+    try { const a = JSON.parse(localStorage.getItem(TREND_RECENT) || '[]'); return Array.isArray(a) ? a.filter(c => anyCode(c)) : []; } catch (e) { return []; }
+  }
+  function pushRecent(code) {
+    const a = [code, ...recentCodes().filter(c => c !== code)].slice(0, 8);
+    try { localStorage.setItem(TREND_RECENT, JSON.stringify(a)); } catch (e) { /* not kept */ }
+  }
+
+  function renderTrendPicks() {
+    const chip = code => { const s = anyCode(code); return s ? `<button class="chip" type="button" data-pick="${code}">${code} ${esc(s.name)}</button>` : ''; };
+    const rec = recentCodes();
+    const hot = Object.entries(CELEB.mentions || {})
+      .map(([c, arr]) => [c, new Set(arr.map(m => m.w)).size])
+      .filter(([c]) => anyCode(c)).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([c]) => c);
+    $('#trendPicks').innerHTML =
+      (rec.length ? `<div class="pick-row"><span class="pick-lbl">最近查過</span><div class="chips">${rec.map(chip).join('')}</div></div>` : '') +
+      `<div class="pick-row"><span class="pick-lbl">名人最常提到</span><div class="chips">${hot.map(chip).join('')}</div></div>`;
+  }
+
+  function findTrendStock(q) {
+    q = q.trim();
+    if (!q) return { list: [] };
+    const head = q.split(/\s+/)[0].toUpperCase();
+    if (anyCode(head)) return { st: anyCode(head) };
+    const low = q.toLowerCase();
+    const list = anyList().filter(s => s.code.toLowerCase().includes(low) || s.name.toLowerCase().includes(low));
+    return list.length === 1 ? { st: list[0] } : { list: list.slice(0, 12) };
+  }
+
+  function crossDown(a, within) {
+    for (let t = LAST; t > LAST - within && t >= 1; t--) {
+      if (a[t] != null && a[t - 1] != null && a[t - 1] >= 0 && a[t] < 0) return t;
+    }
+    return -1;
+  }
+  function sellStreak(st, who) {
+    let n = 0;
+    for (let j = instLast; j >= 0; j--) { const x = instNet(st, who, j); if (x == null || x >= 0) break; n++; }
+    return n;
+  }
+
+  // Chart-pattern label from moving averages, the 60-day range and recent crosses.
+  function classifyTrend(st) {
+    const L = LAST, c = st.close;
+    const m10 = st.ma10[L], m20 = st.ma20[L], m60 = st.ma60[L];
+    const s60 = m60 != null && st.ma60[L - 10] != null ? m60 - st.ma60[L - 10] : null;
+    const win = n => st.fc.slice(Math.max(0, T - n)).filter(x => x != null);
+    const w60 = win(60), w20 = win(20);
+    const hi60 = Math.max(...w60), lo60 = Math.min(...w60);
+    const pos = hi60 > lo60 ? (c - lo60) / (hi60 - lo60) : 0.5;
+    const rng20 = Math.min(...w20) ? Math.max(...w20) / Math.min(...w20) - 1 : 0;
+    const up20 = findMaCross(st, 20, 5, 1) >= 0, dn20 = findMaCross(st, 20, 5, -1) >= 0;
+    const macdUp = findCross(st.osc, 5) >= 0 && st.osc[L] > 0, macdDn = crossDown(st.osc, 5) >= 0 && st.osc[L] < 0;
+    const facts = [];
+    const near = (a, b) => (b ? fmtPct(a / b - 1, 1) : '–');
+    facts.push(`均線排列：${st.bullAlign ? '多頭（5 日 > 10 日 > 月線）' : st.bearAlign ? '空頭（5 日 < 10 日 < 月線）' : '糾結（方向不一致）'}`);
+    if (m60 != null) facts.push(`收盤 ${fmtP(c)} 在季線 ${fmtP(m60)} ${c >= m60 ? '之上' : '之下'}（${near(c, m60)}），季線近 10 日${s60 > 0 ? '上揚' : s60 < 0 ? '下彎' : '走平'}`);
+    if (m20 != null) facts.push(`月線 ${fmtP(m20)}，乖離 ${near(c, m20)}，月線${st.slopeDown ? '下彎' : '上揚或走平'}`);
+    facts.push(`近 60 日區間位置 ${(pos * 100).toFixed(0)}%（0% = 區間最低 ${fmtP(lo60)}，100% = 最高 ${fmtP(hi60)}）`);
+    if (up20) facts.push('近 5 日站上月線');
+    if (dn20) facts.push('近 5 日跌破月線');
+    if (macdUp) facts.push('近 5 日 MACD 柱狀體由負翻正');
+    if (macdDn) facts.push('近 5 日 MACD 柱狀體由正翻負');
+    let t;
+    if (m60 == null) t = { name: '資料不足', tone: 'neutral', desc: '上市未滿 60 個交易日，先只看短期均線與 MACD。' };
+    else if (st.bullAlign && c > m60 && s60 > 0) t = { name: '強勢多頭', tone: 'bull', desc: '短中長期均線多頭排列、季線上揚，股價沿均線走高；拉回 10 日線或月線不破仍偏多。' };
+    else if (c > m60 && s60 > 0 && m10 != null && (c < m10 || c < m20)) t = { name: '多頭回檔', tone: 'bull', desc: '季線仍上揚，短線拉回到 10 日線／月線附近；守住季線屬多頭裡的修正，跌破季線則要小心轉弱。' };
+    else if (up20 && macdUp && c <= m60 * 1.05) t = { name: '轉強初期', tone: 'bull', desc: '剛站上月線且 MACD 翻正，位置仍在季線附近；觀察能否帶量站穩季線。' };
+    else if (dn20 && macdDn && c > m60) t = { name: '轉弱初期', tone: 'bear', desc: '剛跌破月線且 MACD 翻負，但仍在季線之上；季線是下一道支撐。' };
+    else if (st.bearAlign && c < m60 && s60 < 0) t = { name: '弱勢空頭', tone: 'bear', desc: '均線空頭排列、季線下彎，股價在所有均線之下；等止跌訊號（站回月線、MACD 翻正）再考慮。' };
+    else if (c < m60 && s60 < 0 && m20 != null && c > m20) t = { name: '空頭反彈', tone: 'neutral', desc: '季線仍下彎，股價反彈到月線之上；要能站回季線才算扭轉，否則容易遇壓回落。' };
+    else if (rng20 < 0.08 && Math.abs(c / m60 - 1) < 0.05) t = pos < 0.4
+      ? { name: '低檔盤整（築底）', tone: 'neutral', desc: '近 20 日波動不到 8%、貼近季線且在區間低檔，可能在打底；等帶量突破區間再跟。' }
+      : pos > 0.7 ? { name: '高檔整理', tone: 'neutral', desc: '近 20 日波動小、位在區間高檔；整理後可能續攻，跌破月線則留意轉弱。' }
+        : { name: '區間盤整', tone: 'neutral', desc: '近 20 日波動不到 8%、貼近季線，方向未明；等突破或跌破區間。' };
+    else t = c > m60 ? { name: '多頭格局・震盪', tone: 'bull', desc: '股價在季線之上但均線糾結，屬多頭格局中的震盪。' }
+      : { name: '空頭格局・震盪', tone: 'bear', desc: '股價在季線之下但均線糾結，屬空頭格局中的震盪。' };
+    return { ...t, facts, pos };
+  }
+
+  function presetMatch(st, pr) {
+    if ((st.vol20 || 0) < (pr.minVol || 0)) return false;
+    if (pr.mode === 'break') {
+      const i = findMaCross(st, 20, (pr.weeks || 2) * 5, -1);
+      if (i < 0 || (pr.stillBelow && !st.below) || (pr.slopeDown && !st.slopeDown) || (pr.dipOnly && !st.dip)) return false;
+      return !pr.volBreak || volRatioAt(st, i) >= 1.5;
+    }
+    if (pr.mode === 'inst') return instLast >= 0 && !!st.fi && instStreak(st, pr.instWho).n >= pr.instDays && (!pr.instBelow || st.below);
+    if (pr.mode === 'macd') {
+      const line = pr.macdType === 'osc' ? 'osc' : 'dif';
+      return findCross(st[line], pr.macdWithin) >= 0 && (!pr.macdStill || st[line][LAST] > 0) && (!pr.macdLow || st.dif[LAST] < 0);
+    }
+    if (pr.mode === 'up') return findMaCross(st, pr.upMa, pr.upDays, 1) >= 0 && (!pr.stillAbove || isAbove(st, pr.upMa));
+    return false;
+  }
+
+  function renderTrend(st) {
+    trendCode = st.code;
+    const isEtf = !!st.etf;
+    const tr = classifyTrend(st);
+    const pos = n => (maOf(st, n)[LAST] == null ? '–' : isAbove(st, n) ? '<span class="up">線上</span>' : '<span class="down">線下</span>');
+    const chg = n => (st.fc[LAST - n] ? st.close / st.fc[LAST - n] - 1 : null);
+    const inst = !isEtf && instLast >= 0 && st.fi ? ['fi', 'it', 'dl'].map(w => {
+      const b = instStreak(st, w).n, s = sellStreak(st, w);
+      return `${WHO[w]} ${b ? `<span class="up">連買 ${b} 天</span>` : s ? `<span class="down">連賣 ${s} 天</span>` : '<span class="flat">無連續</span>'}`;
+    }).join('<br>') : '<span class="flat">ETF 不提供法人連買資料</span>';
+    const nx = isEtf ? st.next : st.sNext;
+    const stats = [
+      ['收盤／日漲跌', `${fmtP(st.close)} <span class="${cls(st.dayChg)}">${fmtPct(st.dayChg)}</span>`],
+      ['近 20 日／60 日漲跌', `<span class="${cls(chg(20))}">${fmtPct(chg(20))}</span> ／ <span class="${cls(chg(60))}">${fmtPct(chg(60))}</span>`],
+      ['5／10／20／60 日線', `${pos(5)} / ${pos(10)} / ${pos(20)} / ${pos(60)}`],
+      ['RSI(14)', st.rsiNow == null ? '–' : `${st.rsiNow.toFixed(1)}${st.rsiNow < 30 ? '（超賣）' : st.rsiNow > 70 ? '（過熱）' : ''}`],
+      ['K / D', st.kNow == null ? '–' : `${st.kNow.toFixed(0)} / ${st.dNow.toFixed(0)}${st.kNow > st.dNow ? '（K 在 D 上）' : '（K 在 D 下）'}`],
+      ['MACD 柱狀體', `<span class="${cls(st.osc[LAST])}">${fmtM(st.osc[LAST])}</span>（DIF ${st.dif[LAST] >= 0 ? '0 軸上' : '0 軸下'}）`],
+      ['20 日均量', fmtInt(st.vol20) + ' 張'],
+      ['法人', inst],
+      ['下次除權息', nx ? `${nx.ex}${nx.est ? '（預估）' : ''}` : '近一年無'],
+      ['最慢買進日', nx ? buyCell(nx.ex, nx.est) : '–']
+    ];
+    const ment = st.mentions;
+    const nameKey = st.name.replace(/[-*].*$/, '');
+    const posts = [];
+    for (const p of CELEB.people || []) {
+      for (const x of p.posts) {
+        if ((x.title + x.point).includes(nameKey) || (x.title + x.point).includes(st.code)) posts.push({ p, x });
+      }
+    }
+    const fits = (CELEB.people || []).filter(p => p.preset && presetMatch(st, p.preset));
+    const who = [...new Set(ment.map(m => m.w))];
+    const celebHtml = `
+      ${who.length ? `<ul class="notes">${who.map(w => `<li><span class="badge ${w}">${PEOPLE[w] ? PEOPLE[w].badge : ''}</span><b>${esc((PEOPLE[w] || {}).name || '')}</b>：${ment.filter(m => m.w === w).map(m => esc(m.t)).join('；')}</li>`).join('')}</ul>`
+        : '<p class="hint">近期五位名人都沒有點名這檔。</p>'}
+      ${posts.length ? `<div class="hint">提到這檔的近期發表</div><ul class="posts">${posts.slice(0, 8).map(({ p, x }) =>
+        `<li><span class="badge ${p.id}">${p.badge}</span><span class="d">${x.date}</span><a href="${x.url}" target="_blank" rel="noopener">${esc(x.title)}</a><span class="p">${esc(x.point)}</span></li>`).join('')}</ul>` : ''}
+      <div class="hint">目前符合哪位名人的選股視角</div>
+      <div>${fits.length ? fits.map(p => `<span class="tag bull">${esc(p.name)}・${esc(p.presetLabel.replace(/^套用「|」視角$/g, ''))}</span>`).join('') : '<span class="flat">目前不符合任何一位的套用視角條件</span>'}</div>`;
+    const sum = [`型態「${tr.name}」`];
+    if (!isEtf && instLast >= 0 && st.fi) {
+      const f = instStreak(st, 'fi').n, i = instStreak(st, 'it').n, fs = sellStreak(st, 'fi'), is = sellStreak(st, 'it');
+      sum.push(`外資${f ? `連買 ${f} 天` : fs ? `連賣 ${fs} 天` : '無連續'}、投信${i ? `連買 ${i} 天` : is ? `連賣 ${is} 天` : '無連續'}`);
+    }
+    sum.push(who.length ? `${who.length} 位名人提到（${who.map(w => (PEOPLE[w] || {}).name).join('、')}）` : '名人沒有提到');
+    if (fits.length) sum.push(`符合 ${fits.map(p => p.name).join('、')} 的選股視角`);
+    const mark = isEtf ? (st.last && dateIdx[st.last.ex] != null ? { idx: dateIdx[st.last.ex], up: false, label: '除息' } : null) : null;
+    $('#trendResult').innerHTML = `
+      <section class="panel trend-card">
+        <div class="dr-head">
+          <h2>${st.code} ${esc(st.name)}</h2>
+          <span class="flat">${isEtf ? 'ETF・' + esc(st.etf.iss || '') : st.indName}${st.sub ? '・' + esc(st.sub.label) : ''}</span>
+          <span class="px ${cls(st.dayChg)}">${fmtP(st.close)} <small>${fmtPct(st.dayChg)}</small></span>
+          <span class="links">${isEtf ? etfLinks(st.code) : links(st.code)}</span>
+        </div>
+        <div class="trend-verdict ${tr.tone}">
+          <div class="tv-name">${tr.name}</div>
+          <div class="tv-desc">${tr.desc}</div>
+        </div>
+        <p class="trend-sum">${sum.join('；')}。</p>
+        <div class="trend-grid">
+          <div>
+            <h3>型態判斷依據</h3>
+            <ul class="trend-facts">${tr.facts.map(f => `<li>${f}</li>`).join('')}</ul>
+            <div>${signalTags(st)}</div>
+          </div>
+          <div>
+            <h3>股市名人怎麼說</h3>
+            ${celebHtml}
+          </div>
+        </div>
+        <div class="stats">${stats.map(([a, b]) => `<div class="stat"><div class="lbl">${a}</div><div class="val">${b}</div></div>`).join('')}</div>
+        ${chartSVG(st, mark)}
+        <div class="chart-legend">
+          <span><i style="background:var(--ma5)"></i>MA5</span>
+          <span><i style="background:var(--ma10)"></i>MA10</span>
+          <span><i style="background:var(--ma20);height:4px"></i>月線 MA20</span>
+          <span><i style="background:var(--ma60)"></i>季線 MA60</span>
+          <span>K 棒紅漲綠跌（已還原除權息）</span>
+        </div>
+        <p class="hint">型態是依均線、近 60 日區間與 MACD 自動判斷的參考，不構成投資建議。</p>
+      </section>`;
+  }
+
+  function bindTrend() {
+    $('#trendLockForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const v = $('#trendPass').value.trim();
+      if (fnv('cria-trend:' + v) === TREND_HASH) {
+        try { localStorage.setItem(TREND_KEY, TREND_HASH); } catch (err) { /* only this visit */ }
+        $('#trendPass').value = '';
+        $('#trendLockMsg').textContent = '';
+        if (!trendUnlocked()) { $('#trendLock').classList.add('hidden'); $('#trendMain').classList.remove('hidden'); renderTrendPicks(); return; }
+        showTrend();
+      } else {
+        $('#trendLockMsg').textContent = '密碼不正確，請再試一次。';
+        $('#trendPass').select();
+      }
+    });
+    $('#trendLogout').addEventListener('click', e => {
+      e.preventDefault();
+      try { localStorage.removeItem(TREND_KEY); } catch (err) { /* nothing kept */ }
+      $('#trendResult').innerHTML = '';
+      trendCode = null;
+      showTrend();
+    });
+    $('#trendForm').addEventListener('submit', e => {
+      e.preventDefault();
+      const r = findTrendStock($('#trendQ').value);
+      if (r.st) { pushRecent(r.st.code); renderTrendPicks(); renderTrend(r.st); return; }
+      $('#trendResult').innerHTML = `<section class="panel"><div class="empty">${r.list.length
+        ? `找到 ${r.list.length} 檔，請點選：<div class="chips trend-cands">${r.list.map(s => `<button class="chip" type="button" data-pick="${s.code}">${s.code} ${esc(s.name)}</button>`).join('')}</div>`
+        : '找不到這檔，請確認代號或名稱（只有上市股票與上市 ETF）。'}</div></section>`;
+    });
+    $('#trendView').addEventListener('click', e => {
+      const b = e.target.closest('[data-pick]');
+      if (!b) return;
+      const st = anyCode(b.dataset.pick);
+      if (!st) return;
+      $('#trendQ').value = `${st.code} ${st.name}`;
+      pushRecent(st.code);
+      renderTrendPicks();
+      renderTrend(st);
+      $('#trendResult').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   function bindEtf() {
@@ -2030,6 +2282,7 @@
   renderCelebs();
   bind();
   bindEtf();
+  bindTrend();
   update();
   setView(etfState.view);
 })();

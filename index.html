@@ -31,7 +31,7 @@
     <div class="corner">
       <button class="btn theme-btn" id="themeBtn" type="button"></button>
       <div class="site-info">
-        <span title="v1 電子類股篩選／v2 聚焦鏡＋ETF 配息／v2.1 除權息＋最慢買進日">版次 v2.1・2026/10/19</span>
+        <span title="v1 電子類股篩選／v2 聚焦鏡＋ETF 配息／v2.1 除權息＋最慢買進日／v2.2 單股趨勢＋彩色介面">版次 v2.2・2026/10/31</span>
         <span id="views" class="hidden"></span>
       </div>
     </div>
@@ -71,7 +71,8 @@
     </div>
 
     <nav class="view-tabs" id="viewTabs">
-      <button type="button" data-view="stock" class="on">個股聚焦</button>
+      <button type="button" data-view="stock" class="on">海股聚焦</button>
+      <button type="button" data-view="trend">單股趨勢</button>
       <button type="button" data-view="etf">ETF 配息・排行</button>
     </nav>
 
@@ -414,6 +415,37 @@
     </section>
     </div>
 
+    <div id="trendView" class="hidden">
+      <section class="panel trend-lock" id="trendLock">
+        <h2>單股趨勢</h2>
+        <p class="hint">這一頁需要密碼才能進入。輸入一次後，這台裝置會記住，下次不用再輸入。</p>
+        <form class="lock-form" id="trendLockForm" autocomplete="off">
+          <input type="password" id="trendPass" inputmode="numeric" placeholder="請輸入密碼">
+          <button class="btn" type="submit">進入</button>
+        </form>
+        <div class="lock-msg" id="trendLockMsg"></div>
+      </section>
+
+      <div id="trendMain" class="hidden">
+        <section class="panel controls trend-controls">
+          <form class="trend-search" id="trendForm" autocomplete="off">
+            <div class="ctl grow">
+              <label>輸入股票或 ETF 的代號、名稱 <span class="hint">（例如 2330、台達電、0056）</span></label>
+              <input type="search" id="trendQ" list="trendList" placeholder="代號或名稱">
+              <datalist id="trendList"></datalist>
+            </div>
+            <div class="ctl">
+              <label>&nbsp;</label>
+              <button class="btn" type="submit">分析</button>
+            </div>
+          </form>
+          <div class="trend-picks" id="trendPicks"></div>
+          <div class="trend-lockbar"><a href="#" id="trendLogout" class="mini-link">上鎖（下次要重新輸入密碼）</a></div>
+        </section>
+        <div id="trendResult"></div>
+      </div>
+    </div>
+
     <div id="etfView" class="hidden">
       <div id="etfNodata" class="panel notice hidden">
         <h2>尚未有 ETF 資料</h2>
@@ -586,6 +618,7 @@
           <li>ETF：證交所「ETF e添富」的商品清單（規模、受益人數、上市日、投信、追蹤指數，以及股票型／債券型／原物料、槓桿／反向、主動式、高股息等官方分類）與「配息清單」（近兩年的除息交易日、收益分配發放日、配息金額，含已公告尚未除息者），另併入證交所「除權除息預告表」（TWT48U）。只含上市 ETF，上櫃 ETF（如部分債券 ETF）不在內；海外／國內是依 ETF 名稱與追蹤指數判斷。</li>
           <li>ETF 配息頻率：依近 400 天的除息間隔判斷（約 1 個月＝月配、3 個月＝季配、6 個月＝半年配、1 年＝年配）。近 12 月殖利率 = 近 365 天已除息的配息合計 ÷ 最新收盤；年化殖利率 = 最近一次配息 × 每年配息次數 ÷ 最新收盤（新上市未滿一年的 ETF 看這個較準）。下次除息若尚未公告，依最近一次除息日加上配息間隔預估（金額沿用上一次，標示「預估」）。填息 = 除息後收盤回到除息前一日收盤。</li>
           <li>個股除權息：證交所「除權除息計算結果表」（TWT49U，近 13 個月的除權息日、除權息前收盤、權值＋息值）與「除權除息預告表」（TWT48U，已公告的除權息日、現金股利、配股率、現金增資）。尚未公告的下一次依過去間隔推估（多數股票一年一次、台積電等季配），金額沿用上一次，標示「預估」。近 12 月殖利率 = 近 365 天現金股利合計 ÷ 最新收盤（除權息同時發生時只計已公告的現金股利）。</li>
+          <li>單股趨勢（需密碼）：輸入一檔上市股票或 ETF，依均線排列、收盤與季線（60 日線）的位置與方向、近 60 日高低區間位置、近 5 日是否站上／跌破月線與 MACD 翻正／翻負，判斷為強勢多頭、多頭回檔、轉強初期、轉弱初期、弱勢空頭、空頭反彈、低檔盤整、高檔整理、區間盤整等型態；並列出五位名人對這檔的點評、提到它的近期發表，以及它目前符合哪位名人的「套用視角」條件。</li>
           <li>最慢買進日 = 除權息日的前一個交易日（跳過週末與證交所公告的休市日）；台股 T+2 交割，這天收盤前買進仍可參加除權息，除權息當天才買就領不到。</li>
           <li>本頁僅為技術面篩選工具，名人觀點為公開報導摘要，皆不構成投資建議；ETF 配息率不代表報酬率，過去配息不代表未來配息。</li>
         </ul>
