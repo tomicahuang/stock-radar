@@ -1904,12 +1904,10 @@
 
   function renderTrendPicks() {
     const chip = code => { const s = anyCode(code); return s ? `<button class="chip" type="button" data-pick="${code}">${code} ${esc(s.name)}</button>` : ''; };
-    const rec = recentCodes();
     const hot = Object.entries(CELEB.mentions || {})
       .map(([c, arr]) => [c, new Set(arr.map(m => m.w)).size])
       .filter(([c]) => anyCode(c)).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([c]) => c);
     $('#trendPicks').innerHTML =
-      (rec.length ? `<div class="pick-row"><span class="pick-lbl">最近查過</span><div class="chips">${rec.map(chip).join('')}</div></div>` : '') +
       `<div class="pick-row"><span class="pick-lbl">名人最常提到</span><div class="chips">${hot.map(chip).join('')}</div></div>`;
   }
 
