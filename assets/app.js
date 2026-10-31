@@ -1704,7 +1704,7 @@
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
     return h.toString(16);
   }
-  const trendUnlocked = () => { try { return localStorage.getItem(TREND_KEY) === TREND_HASH; } catch (e) { return false; } };
+  const trendUnlocked = () => { try { return localStorage.getItem(TREND_KEY) === TREND_HASH && !!localStorage.getItem('stock-radar-sync-id'); } catch (e) { return false; } };
   const anyList = () => stocks.concat(etfs);
   let trendCode = null;
 
@@ -1722,6 +1722,7 @@
     renderTrendPicks();
     renderMy();
     if (trendCode && anyCode(trendCode)) renderTrend(anyCode(trendCode));
+    if (isTypeA()) syncPull();
   }
 
   function recentCodes() {
@@ -1732,14 +1733,93 @@
     try { localStorage.setItem(TREND_RECENT, JSON.stringify(a)); } catch (e) { /* not kept */ }
   }
 
-  // "My holdings" for TypeA: kept only in this browser (localStorage), never uploaded.
+  // "My holdings" for TypeA: a local copy plus a cloud copy on textdb.dev, so every device that enters
+  // the same password reads and edits the same list. The cloud slot is derived from the password and is
+  // never written in this file; anyone who knows the password can read it.
   const MY_KEY = 'stock-radar-my-stocks';
+  const SYNC_KEY = 'stock-radar-sync-id';
+  const DIRTY_KEY = 'stock-radar-sync-dirty';
+  const syncUrl = id => `https://textdb.dev/api/data/${id}`;
+  const makeSyncId = pw => 'cria-my-' + ['a', 'b', 'c', 'd'].map(s => fnv(`${s}:cria-holdings:${pw}`).padStart(8, '0')).join('');
+  const syncId = () => { try { return localStorage.getItem(SYNC_KEY) || ''; } catch (e) { return ''; } };
+  const cleanList = a => (Array.isArray(a) ? a.filter(x => x && typeof x.code === 'string') : []);
   function loadMy() {
-    try { const a = JSON.parse(localStorage.getItem(MY_KEY) || '[]'); return Array.isArray(a) ? a.filter(x => x && typeof x.code === 'string') : []; } catch (e) { return []; }
+    try { return cleanList(JSON.parse(localStorage.getItem(MY_KEY) || '[]')); } catch (e) { return []; }
   }
-  function saveMy(list) { try { localStorage.setItem(MY_KEY, JSON.stringify(list)); } catch (e) { /* not kept */ } }
+  function saveLocal(list) { try { localStorage.setItem(MY_KEY, JSON.stringify(list)); } catch (e) { /* not kept */ } }
+  function setDirty(on) { try { if (on) localStorage.setItem(DIRTY_KEY, '1'); else localStorage.removeItem(DIRTY_KEY); } catch (e) { /* ignore */ } }
+  const isDirty = () => { try { return localStorage.getItem(DIRTY_KEY) === '1'; } catch (e) { return false; } };
   const inMy = code => loadMy().some(x => x.code === code);
   const isTypeA = () => etfState.view === 'trend';
+  const hhmm = () => { const d = new Date(); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+  let syncMsg = { text: '', bad: false };
+  function setSync(text, bad) {
+    syncMsg = { text, bad: !!bad };
+    const el = $('#mySync');
+    if (el) { el.textContent = text; el.classList.toggle('bad', !!bad); }
+  }
+
+  // null = cloud slot never written yet
+  async function pullRemote() {
+    const r = await fetch(syncUrl(syncId()), { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const t = (await r.text()).trim();
+    if (!t) return null;
+    const j = JSON.parse(t);
+    return j && Array.isArray(j.items) ? cleanList(j.items) : null;
+  }
+  async function pushRemote(list) {
+    const body = JSON.stringify({ v: 1, updated: new Date().toISOString(), items: list });
+    const r = await fetch(syncUrl(syncId()), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  }
+  function refreshMyViews() {
+    renderMy();
+    if (isTypeA() && trendCode && anyCode(trendCode)) renderTrend(anyCode(trendCode));
+  }
+
+  async function syncPull() {
+    if (!syncId()) { setSync('這台裝置尚未開啟雲端同步', true); return; }
+    setSync('雲端同步中…');
+    try {
+      const local = loadMy();
+      if (isDirty() && local.length) {
+        await pushRemote(local);
+        setDirty(false);
+      } else {
+        const rem = await pullRemote();
+        let firstSync = false;
+        try { firstSync = localStorage.getItem('stock-radar-sync-done') !== syncId(); } catch (e) { /* ignore */ }
+        if (rem === null) { if (local.length) await pushRemote(local); }
+        else if (firstSync && local.some(x => !rem.some(y => y.code === x.code))) {
+          // a device's first sync keeps the stocks it already had locally
+          const merged = rem.concat(local.filter(x => !rem.some(y => y.code === x.code)));
+          await pushRemote(merged);
+          saveLocal(merged);
+        } else saveLocal(rem);
+        try { localStorage.setItem('stock-radar-sync-done', syncId()); } catch (e) { /* ignore */ }
+      }
+      setSync(`已與雲端同步（${hhmm()}）`);
+    } catch (e) {
+      setSync('連不上雲端，先顯示這台裝置上次的清單', true);
+    }
+    refreshMyViews();
+  }
+
+  // Apply an edit on top of the latest cloud copy, so two phones editing at different times do not overwrite each other.
+  async function mutateMy(fn) {
+    let list = loadMy();
+    if (syncId() && !isDirty()) {
+      try { const rem = await pullRemote(); if (rem !== null) list = rem; } catch (e) { /* use local */ }
+    }
+    fn(list);
+    saveLocal(list);
+    refreshMyViews();
+    if (!syncId()) return;
+    setSync('儲存到雲端…');
+    try { await pushRemote(list); setDirty(false); setSync(`已存到雲端（${hhmm()}）`); }
+    catch (e) { setDirty(true); setSync('雲端暫時連不上，已先存在這台裝置，下次打開會自動補存', true); }
+  }
 
   function renderMy() {
     $('#myPanel').classList.toggle('hidden', !isTypeA());
@@ -1968,7 +2048,7 @@
       e.preventDefault();
       const v = $('#trendPass').value.trim();
       if (fnv('cria-trend:' + v) === TREND_HASH) {
-        try { localStorage.setItem(TREND_KEY, TREND_HASH); } catch (err) { /* only this visit */ }
+        try { localStorage.setItem(TREND_KEY, TREND_HASH); localStorage.setItem(SYNC_KEY, makeSyncId(v)); } catch (err) { /* only this visit */ }
         $('#trendPass').value = '';
         $('#trendLockMsg').textContent = '';
         if (!trendUnlocked()) { $('#trendLock').classList.add('hidden'); $('#trendMain').classList.remove('hidden'); renderTrendPicks(); renderMy(); return; }
@@ -1981,12 +2061,12 @@
     $('#myList').addEventListener('change', e => {
       const t = e.target, code = t.dataset.myCost || t.dataset.myLots;
       if (!code) return;
-      const list = loadMy(), x = list.find(y => y.code === code);
-      if (!x) return;
-      const v = t.value === '' ? null : +t.value;
-      if (t.dataset.myCost) x.cost = v > 0 ? v : null; else x.lots = v > 0 ? v : null;
-      saveMy(list);
-      renderMy();
+      const v = t.value === '' ? null : +t.value, isCost = !!t.dataset.myCost;
+      mutateMy(list => {
+        const x = list.find(y => y.code === code);
+        if (!x) return;
+        if (isCost) x.cost = v > 0 ? v : null; else x.lots = v > 0 ? v : null;
+      });
     });
     $('#myExport').addEventListener('click', e => {
       e.preventDefault();
@@ -2003,20 +2083,19 @@
       let got;
       try { got = JSON.parse(decodeURIComponent(escape(atob(s.replace(/^CRIA1:/, ''))))); } catch (err) { got = null; }
       if (!Array.isArray(got)) { alert('備份碼看不懂，請確認是完整複製的那一段。'); return; }
-      const list = loadMy();
-      let added = 0;
-      for (const y of got) {
-        if (!y || typeof y.code !== 'string') continue;
-        const x = list.find(z => z.code === y.code);
-        if (x) { if (y.cost) x.cost = y.cost; if (y.lots) x.lots = y.lots; } else { list.push({ code: y.code, added: y.added || TODAY, cost: y.cost || null, lots: y.lots || null }); added++; }
-      }
-      saveMy(list);
-      renderMy();
-      alert(`還原完成：新增 ${added} 檔，現在共 ${list.length} 檔。`);
+      let added = 0, total = 0;
+      mutateMy(list => {
+        for (const y of got) {
+          if (!y || typeof y.code !== 'string') continue;
+          const x = list.find(z => z.code === y.code);
+          if (x) { if (y.cost) x.cost = y.cost; if (y.lots) x.lots = y.lots; } else { list.push({ code: y.code, added: y.added || TODAY, cost: y.cost || null, lots: y.lots || null }); added++; }
+        }
+        total = list.length;
+      }).then(() => alert(`還原完成：新增 ${added} 檔，現在共 ${total} 檔。`));
     });
     $('#trendLogout').addEventListener('click', e => {
       e.preventDefault();
-      try { localStorage.removeItem(TREND_KEY); } catch (err) { /* nothing kept */ }
+      try { localStorage.removeItem(TREND_KEY); localStorage.removeItem(SYNC_KEY); } catch (err) { /* nothing kept */ }
       $('#trendResult').innerHTML = '';
       trendCode = null;
       showTrend();
@@ -2032,22 +2111,18 @@
     $('#trendView').addEventListener('click', e => {
       const add = e.target.closest('[data-my-add]');
       if (add) {
-        const list = loadMy();
-        if (!list.some(x => x.code === add.dataset.myAdd)) list.unshift({ code: add.dataset.myAdd, added: TODAY });
-        saveMy(list);
-        renderMy();
-        if (trendCode && anyCode(trendCode)) renderTrend(anyCode(trendCode));
+        const code = add.dataset.myAdd;
+        mutateMy(list => { if (!list.some(x => x.code === code)) list.unshift({ code, added: TODAY }); });
         return;
       }
       const del = e.target.closest('[data-my-del]');
       if (del) {
         const code = del.dataset.myDel, st = anyCode(code);
         if (!confirm(`確定把 ${code}${st ? ' ' + st.name : ''} 從我的持股移除？`)) return;
-        saveMy(loadMy().filter(x => x.code !== code));
-        renderMy();
-        if (trendCode && anyCode(trendCode)) renderTrend(anyCode(trendCode));
+        mutateMy(list => { const i = list.findIndex(x => x.code === code); if (i >= 0) list.splice(i, 1); });
         return;
       }
+      if (e.target.closest('#mySyncNow')) { e.preventDefault(); syncPull(); return; }
       const b = e.target.closest('[data-pick]');
       if (!b) return;
       e.preventDefault();
