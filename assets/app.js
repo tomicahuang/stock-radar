@@ -1689,6 +1689,7 @@
     $('#stockView').classList.toggle('hidden', etfState.view !== 'stock');
     $('#etfView').classList.toggle('hidden', etfState.view !== 'etf');
     $('#trendView').classList.toggle('hidden', !trendOn);
+    $('#celebs').classList.toggle('hidden', trendOn);
     $$('#viewTabs button').forEach(b => b.classList.toggle('on', b.dataset.view === etfState.view));
     if (etfState.view === 'etf') updateEtf();
     else { if (trendOn) showTrend(); saveEtfState(); }
