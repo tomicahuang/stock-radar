@@ -154,6 +154,11 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; }
 .us-v small { font-weight: 600; }
 .us-t { font-size: 11px; white-space: nowrap; }
 .mkt .lbl { color: color-mix(in srgb, var(--m) 75%, var(--text)); font-weight: 600; }
+.mkt .lbl .qt { color: var(--muted); font-weight: 500; font-size: 11px; }
+.mkt .lbl .upd { float: right; margin-left: 10px; color: var(--muted); font-weight: 500; font-size: 11px; }
+.qlive { color: #ef4444; font-weight: 700; }
+.qlive::before { content: '●'; margin-right: 3px; animation: qblink 1.6s infinite; }
+@keyframes qblink { 50% { opacity: .25; } }
 .basis { display: inline-block; padding: 0 6px; border-radius: 4px; font-weight: 600; }
 .basis.up { color: var(--tag-bull); background: var(--tag-bull-bg); border: 1px solid var(--tag-bull-b); }
 .basis.down { color: var(--tag-bear); background: var(--tag-bear-bg); border: 1px solid var(--tag-bear-b); }

@@ -45,6 +45,9 @@ jobs:
     needs: update
     if: always() && (needs.update.result == 'success' || needs.update.result == 'skipped')
     runs-on: ubuntu-latest
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -52,6 +55,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+      - name: Latest quotes (TAIEX, futures, US)
+        continue-on-error: true
+        shell: pwsh
+        run: ./update-quotes.ps1
       - name: Collect web page files
         run: |
           mkdir -p _site/data

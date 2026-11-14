@@ -865,8 +865,35 @@
   function seriesBias(arr) {
     const a = arr.map(x => (x == null ? null : x));
     const m = sma(ffill(a), 20);
-    const c = ffill(a)[LAST];
-    return { c, ma: m[LAST], bias: m[LAST] ? c / m[LAST] - 1 : null, chg: ffill(a)[LAST - 1] ? c / ffill(a)[LAST - 1] - 1 : null };
+    const c = ffill(a)[LAST], p = ffill(a)[LAST - 1];
+    return { c, ma: m[LAST], bias: m[LAST] ? c / m[LAST] - 1 : null, chg: p ? c / p - 1 : null, d: p && c != null ? c - p : null };
+  }
+
+  const fmtDiff = (d, dp = 2) => (d == null ? '' : (d > 0 ? '+' : '') + d.toLocaleString('zh-TW', { minimumFractionDigits: dp, maximumFractionDigits: dp }));
+  const chgText = (d, chg, dp) => (d == null ? fmtPct(chg) : `${fmtDiff(d, dp)} (${fmtPct(chg)})`);
+
+  // Frequent quotes (data/quotes-data.js) win over the daily data only when they are at least as new.
+  const Q = window.QUOTES || {};
+  const qFresh = q => q && q.p != null && q.t && q.t.slice(0, 10) >= dates[LAST];
+  const updTag = at => (at ? `<span class="upd">更新 ${md(at.slice(0, 10))} ${at.slice(11, 16)}</span>` : '');
+  const qWhen = (q, close) => q.live ? `<span class="qlive">盤中 ${q.t.slice(11)}</span>` : `${md(q.day || q.t.slice(0, 10))} ${close}`;
+
+  function taiexCard() {
+    let x = DATA.index && DATA.index.taiex ? seriesBias(DATA.index.taiex) : { c: null };
+    let when = `${md(dates[LAST])} 收盤`, at = DATA.generatedAt;
+    const q = Q.taiex;
+    if (qFresh(q)) {
+      x = { c: q.p, ma: q.ma20, bias: q.ma20 ? q.p / q.ma20 - 1 : null, chg: q.prev ? q.p / q.prev - 1 : null, d: q.prev ? q.p - q.prev : null };
+      when = qWhen(q, '收盤');
+      at = Q.at;
+    }
+    if (x.c == null) return '';
+    return `
+      <div class="mkt">
+        <div class="lbl">${updTag(at)}加權指數 <small class="qt">${when}</small></div>
+        <div class="val ${cls(x.chg)}">${x.c.toLocaleString('zh-TW', { maximumFractionDigits: 2 })} <small>${chgText(x.d, x.chg, 2)}</small></div>
+        <div class="sub ${cls(x.bias)}">月線 ${x.ma ? x.ma.toFixed(0) : '–'}・乖離 ${fmtPct(x.bias)}・${x.bias < 0 ? '月線下' : '月線上'}</div>
+      </div>`;
   }
 
   function futCard() {
@@ -874,15 +901,35 @@
     if (!F || !F.c) return '';
     const x = seriesBias(F.c);
     if (x.c == null) return '';
-    const exp = F.exp[LAST] || '';
-    const spot = DATA.index && DATA.index.taiex ? ffill(DATA.index.taiex)[LAST] : null;
-    const basis = spot != null && F.c[LAST] != null ? F.c[LAST] - spot : null;
+    let exp = F.exp[LAST] || '';
+    let spot = DATA.index && DATA.index.taiex ? ffill(DATA.index.taiex)[LAST] : null;
+    let basis = spot != null && F.c[LAST] != null ? F.c[LAST] - spot : null;
+    let when = `${md(dates[LAST])} 收盤`, at = DATA.generatedAt;
     const n = F.night;
-    const night = n ? `夜盤 ${n.date.slice(4, 6)}/${n.date.slice(6)}：<span class="${cls(n.ch)}">${n.c.toLocaleString('zh-TW')} ${n.ch == null ? '' : (n.ch > 0 ? '+' : '') + n.ch}</span>` : '';
+    let night = n ? `夜盤 ${n.date.slice(4, 6)}/${n.date.slice(6)}：<span class="${cls(n.ch)}">${n.c.toLocaleString('zh-TW')} ${n.ch == null ? '' : (n.ch > 0 ? '+' : '') + n.ch}</span>` : '';
+    const q = Q.fut;
+    if (qFresh(q)) {
+      x.c = q.p;
+      x.chg = q.ref ? q.p / q.ref - 1 : null;
+      x.d = q.ref ? q.p - q.ref : null;
+      at = Q.at;
+      x.bias = x.ma ? q.p / x.ma - 1 : null;
+      const m = /^TXF([A-L])(\d)$/.exec(q.sym || '');
+      if (m) exp = `202${m[2]}${String(m[1].charCodeAt(0) - 64).padStart(2, '0')}`;
+      if (qFresh(Q.taiex)) spot = Q.taiex.p;
+      basis = spot != null ? q.p - spot : null;
+      when = q.live ? `<span class="qlive">盤中 ${q.t.slice(11)}</span>` : `${md(q.t.slice(0, 10))} 收盤`;
+      const g = Q.night;
+      night = '';
+      if (g && g.p != null && g.t > q.t) {
+        const ch = g.ref ? g.p - g.ref : null;
+        night = `夜盤${g.live ? '盤中' : ''} ${md(g.t.slice(0, 10))} ${g.t.slice(11)}：<span class="${cls(ch)}">${g.p.toLocaleString('zh-TW')} ${ch == null ? '' : (ch > 0 ? '+' : '') + ch}</span>`;
+      }
+    }
     return `
       <div class="mkt fut">
-        <div class="lbl">台指期 近月${exp ? `（${exp.slice(0, 4)}/${exp.slice(4)}）` : ''}</div>
-        <div class="val ${cls(x.chg)}">${x.c.toLocaleString('zh-TW')} <small>${fmtPct(x.chg)}</small></div>
+        <div class="lbl">${updTag(at)}台指期 近月${exp ? `（${exp.slice(0, 4)}/${exp.slice(4)}）` : ''} <small class="qt">${when}</small></div>
+        <div class="val ${cls(x.chg)}">${x.c.toLocaleString('zh-TW')} <small>${chgText(x.d, x.chg, 0)}</small></div>
         <div class="sub ${cls(x.bias)}">月線 ${x.ma ? x.ma.toFixed(0) : '–'}・乖離 ${fmtPct(x.bias)}・${x.bias < 0 ? '月線下' : '月線上'}</div>
         <div class="sub">${basis == null ? '' : `<span class="basis ${cls(basis)}">${basis >= 0 ? '正' : '逆'}價差 ${Math.abs(basis).toFixed(0)} 點</span>`}${night ? '・' + night : ''}</div>
       </div>`;
@@ -896,35 +943,35 @@
       const s = U[k];
       if (!s || !s.c || s.c.length < 2) return null;
       const n = s.c.length, c = s.c[n - 1];
+      const q = Q[k];
+      if (q && q.p != null && q.day >= s.d[n - 1]) {
+        return { c: q.p, chg: q.prev ? q.p / q.prev - 1 : null, d: q.prev ? q.p - q.prev : null, ma: q.ma20, date: q.day, q };
+      }
       const ma = n >= 20 ? s.c.slice(n - 20).reduce((a, b) => a + b, 0) / 20 : null;
-      return { c, chg: c / s.c[n - 2] - 1, ma, date: s.d[n - 1] };
+      return { c, chg: c / s.c[n - 2] - 1, d: c - s.c[n - 2], ma, date: s.d[n - 1] };
     };
     const rows = [['ndq', '那斯達克'], ['sox', '費城半導體'], ['spx', 'S&P 500'], ['dji', '道瓊']]
       .map(([k, n]) => [n, one(k)]).filter(([, x]) => x);
     const t = one('tsm'), fx = one('twd'), tw = byCode['2330'];
     const prem = t && fx && tw && tw.close ? t.c * fx.c / 5 / tw.close - 1 : null;
-    const date = (one('ndq') || {}).date;
+    const head = one('ndq') || {};
+    const date = head.date;
+    const when = head.q ? qWhen(head.q, '收盤') : date ? `${md(date)} 收盤` : '';
     const row = ([n, x]) => `<span class="us-n">${n}</span>
-      <span class="us-v ${cls(x.chg)}">${x.c.toLocaleString('zh-TW', { maximumFractionDigits: 0 })} <small>${fmtPct(x.chg)}</small></span>
+      <span class="us-v ${cls(x.chg)}">${x.c.toLocaleString('zh-TW', { maximumFractionDigits: 2 })} <small>${chgText(x.d, x.chg, 2)}</small></span>
       <span class="us-t ${x.ma == null ? 'flat' : x.c >= x.ma ? 'up' : 'down'}">${x.ma == null ? '' : x.c >= x.ma ? '月線上' : '月線下'}</span>`;
     return `
       <div class="mkt us">
-        <div class="lbl">美股 前一晚收盤${date ? `（${md(date)}）` : ''}</div>
+        <div class="lbl">${updTag(head.q ? Q.at : U.generatedAt)}美股 <small class="qt">${when}</small></div>
         <div class="us-grid">${rows.map(row).join('')}</div>
-        ${t ? `<div class="sub">台積電 ADR ${t.c.toFixed(2)} <span class="${cls(t.chg)}">${fmtPct(t.chg)}</span>${prem == null ? '' : `・溢價 <span class="${cls(prem)}">${fmtPct(prem, 1)}</span>`}</div>` : ''}
+        ${t ? `<div class="sub">台積電 ADR ${t.c.toFixed(2)} <span class="${cls(t.chg)}">${chgText(t.d, t.chg, 2)}</span>${prem == null ? '' : `・溢價 <span class="${cls(prem)}">${fmtPct(prem, 1)}</span>`}</div>` : ''}
       </div>`;
   }
 
   function renderMarket() {
-    const items = [];
-    if (DATA.index && DATA.index.taiex) items.push(['加權指數', seriesBias(DATA.index.taiex)]);
-    $('#market').innerHTML = items.filter(([, x]) => x.c != null).map(([n, x]) => `
-      <div class="mkt">
-        <div class="lbl">${n}</div>
-        <div class="val ${cls(x.chg)}">${x.c.toLocaleString('zh-TW', { maximumFractionDigits: 2 })} <small>${fmtPct(x.chg)}</small></div>
-        <div class="sub ${cls(x.bias)}">月線 ${x.ma ? x.ma.toFixed(0) : '–'}・乖離 ${fmtPct(x.bias)}・${x.bias < 0 ? '月線下' : '月線上'}</div>
-      </div>`).join('') + usCard() + futCard();
-    $('#meta').innerHTML = `資料日期 <b>${dates[LAST]}</b><br>共 ${T} 個交易日（${dates[0]} 起）<br>更新於 ${DATA.generatedAt}`;
+    $('#market').innerHTML = taiexCard() + usCard() + futCard();
+    $('#meta').innerHTML = `資料日期 <b>${dates[LAST]}</b><br>共 ${T} 個交易日（${dates[0]} 起）<br>更新於 ${DATA.generatedAt}` +
+      (Q.at ? `<br>行情更新 ${Q.at.slice(5).replace('-', '/')}` : '');
   }
 
   // ------------------------------------------------------------------ celebrity cards
@@ -1715,6 +1762,7 @@
     $('#stockView').classList.toggle('hidden', etfState.view !== 'stock');
     $('#etfView').classList.toggle('hidden', etfState.view !== 'etf');
     $('#trendView').classList.toggle('hidden', !trendOn);
+    $('#celebs').classList.toggle('hidden', trendOn);
     $$('#viewTabs button').forEach(b => b.classList.toggle('on', b.dataset.view === etfState.view));
     if (etfState.view === 'etf') updateEtf();
     else { if (trendOn) showTrend(); saveEtfState(); }

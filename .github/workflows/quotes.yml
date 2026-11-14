@@ -1,0 +1,52 @@
+name: quotes
+
+on:
+  schedule:
+    # every 20 minutes, UTC Mon-Fri = Taipei Mon 08:00 to Sat 08:00
+    # (Taiwan session, TAIEX futures night session and the US session up to its close)
+    - cron: '*/20 * * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: stock-radar-quotes
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Latest quotes (TAIEX, futures, US)
+        shell: pwsh
+        run: ./update-quotes.ps1
+      - name: Collect web page files
+        run: |
+          mkdir -p _site/data
+          cp index.html manifest.json _site/
+          cp -r assets _site/
+          cp data/*.js _site/data/
+          touch _site/.nojekyll
+          # big data files only change with a commit, so phones re-download them only then; quotes change every run
+          sed -i -E "s#(href|src)=\"((assets|data)/[^\"?]+\.(css|js))\"#\1=\"\2?v=${GITHUB_SHA::8}\"#g" _site/index.html
+          sed -i -E "s#quotes-data\.js\?v=[0-9a-f]+#quotes-data.js?v=${GITHUB_RUN_ID}#" _site/index.html
+          grep -o 'quotes-data[^"]*' _site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
