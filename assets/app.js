@@ -877,6 +877,7 @@
   const qFresh = q => q && q.p != null && q.t && q.t.slice(0, 10) >= dates[LAST];
   const updTag = at => (at ? `<span class="upd">更新 ${md(at.slice(0, 10))} ${at.slice(11, 16)}</span>` : '');
   const qWhen = (q, close) => q.live ? `<span class="qlive">盤中 ${q.t.slice(11)}</span>` : `${md(q.day || q.t.slice(0, 10))} ${close}`;
+  const MK = {};
 
   function taiexCard() {
     let x = DATA.index && DATA.index.taiex ? seriesBias(DATA.index.taiex) : { c: null };
@@ -888,6 +889,7 @@
       at = Q.at;
     }
     if (x.c == null) return '';
+    MK.tx = { ...x, live: !!(qFresh(q) && q.live), at };
     return `
       <div class="mkt">
         <div class="lbl">${updTag(at)}加權指數 <small class="qt">${when}</small></div>
@@ -923,9 +925,11 @@
       night = '';
       if (g && g.p != null && g.t > q.t) {
         const ch = g.ref ? g.p - g.ref : null;
+        MK.night = { p: g.p, ch, live: g.live };
         night = `夜盤${g.live ? '盤中' : ''} ${md(g.t.slice(0, 10))} ${g.t.slice(11)}：<span class="${cls(ch)}">${g.p.toLocaleString('zh-TW')} ${ch == null ? '' : (ch > 0 ? '+' : '') + ch}</span>`;
       }
     }
+    MK.fut = { ...x, basis, spot };
     return `
       <div class="mkt fut">
         <div class="lbl">${updTag(at)}台指期 近月${exp ? `（${exp.slice(0, 4)}/${exp.slice(4)}）` : ''} <small class="qt">${when}</small></div>
@@ -957,6 +961,7 @@
     const head = one('ndq') || {};
     const date = head.date;
     const when = head.q ? qWhen(head.q, '收盤') : date ? `${md(date)} 收盤` : '';
+    MK.us = { ndq: one('ndq'), sox: one('sox'), tsm: t, prem, live: !!(head.q && head.q.live) };
     const row = ([n, x]) => `<span class="us-n">${n}</span>
       <span class="us-v ${cls(x.chg)}">${x.c.toLocaleString('zh-TW', { maximumFractionDigits: 2 })} <small>${chgText(x.d, x.chg, 2)}</small></span>
       <span class="us-t ${x.ma == null ? 'flat' : x.c >= x.ma ? 'up' : 'down'}">${x.ma == null ? '' : x.c >= x.ma ? '月線上' : '月線下'}</span>`;
@@ -968,8 +973,77 @@
       </div>`;
   }
 
+  // Rule-based short read of the three cards above; it rewrites itself whenever the quotes refresh.
+  function brief() {
+    const { tx, us, fut, night } = MK;
+    const lines = [], usLines = [];
+    let score = 0;
+    const pct = v => fmtPct(v);
+    const hi = (v, txt) => `<b class="${cls(v)}">${txt}</b>`;
+    const twLive = tx && tx.live;
+    if (us && us.sox && us.sox.chg != null) {
+      const s = us.sox.chg, n = us.ndq && us.ndq.chg;
+      let tail = '電子股影響不大';
+      if (s <= -0.02) { tail = '電子股壓力大'; score -= 2; }
+      else if (s <= -0.008) { tail = '電子股偏弱'; score -= 1; }
+      else if (s >= 0.02) { tail = '有利電子股'; score += 2; }
+      else if (s >= 0.008) { tail = '電子股偏強'; score += 1; }
+      usLines.push(`${us.live ? '美股盤中' : ''}費半 ${hi(s, pct(s))}${n == null ? '' : `、那指 ${hi(n, pct(n))}`}，${tail}`);
+    }
+    if (us && us.tsm && us.tsm.chg != null && !twLive) {
+      const a = us.tsm.chg;
+      const tail = a <= -0.01 ? '台積電恐開低' : a >= 0.01 ? '台積電可望開高' : '台積電影響有限';
+      if (a <= -0.01) score -= 1; else if (a >= 0.01) score += 1;
+      usLines.push(`ADR ${hi(a, pct(a))}${us.prem == null ? '' : `（溢價 ${fmtPct(us.prem, 1).replace('+', '')}）`}，${tail}`);
+    }
+    if (night && night.ch != null && !twLive) {
+      const d = night.ch;
+      const tail = d <= -100 ? '預期開低' : d >= 100 ? '預期開高' : '開盤變化不大';
+      if (d <= -100) score -= 1; else if (d >= 100) score += 1;
+      const nb = fut && fut.spot != null ? night.p - fut.spot : null;
+      lines.push(`夜盤${night.live ? '盤中' : ''} ${hi(d, fmtDiff(d, 0) + ' 點')}，${tail}${nb == null ? '' : `（${nb >= 0 ? '正' : '逆'}價差剩 ${Math.abs(nb).toFixed(0)}）`}`);
+    } else if (fut && fut.basis != null) {
+      const b = fut.basis, divSeason = /-0[6-9]-/.test(dates[LAST]);
+      let tail = '多空平衡';
+      if (divSeason) tail = '除息季參考性低';
+      else if (b >= 100) { tail = '期貨偏樂觀'; score += 1; }
+      else if (b <= -100) { tail = '期貨偏悲觀'; score -= 1; }
+      lines.push(`${b >= 0 ? '正' : '逆'}價差 ${hi(b, Math.abs(b).toFixed(0) + ' 點')}，${tail}`);
+    }
+    lines.push(...usLines);
+    if (tx && tx.bias != null) {
+      const b = tx.bias, ma = tx.ma ? Math.round(tx.ma).toLocaleString('zh-TW') : '';
+      const now = twLive ? `盤中 ${hi(tx.chg, pct(tx.chg))}，` : '';
+      if (b < 0) {
+        lines.push(`加權${now}月線下 ${hi(b, pct(-b).replace('+', ''))}，${ma} 是壓力`);
+        if (b < -0.03) score -= 1;
+      } else {
+        lines.push(`加權${now}月線上 ${hi(b, pct(b))}，${ma} 為支撐`);
+        if (b > 0.03) score += 1;
+      }
+      if (twLive) score += tx.chg >= 0.01 ? 1 : tx.chg <= -0.01 ? -1 : 0;
+    }
+    if (!lines.length) return '';
+    let preview = '';
+    if (night && !twLive && fut && fut.spot != null && fut.c != null) {
+      const move = night.p - fut.c;
+      preview = `<div class="preview">大盤預告：開盤約 <b class="${cls(move)}">${Math.round(fut.spot + move).toLocaleString('zh-TW')}（${fmtDiff(move, 0)} 點）</b></div>`;
+    }
+    const v = score >= 2 ? ['偏多', 'up', twLive ? '盤勢偏強，留意強勢股' : '氣氛偏多，留意強勢股']
+      : score <= -2 ? ['偏空', 'down', twLive ? '盤勢偏弱，保守為宜' : '開盤宜保守，站穩再進場']
+      : ['中性', 'flat', '多空拉鋸，觀望為主'];
+    return `
+      <div class="mkt brief" title="依上面三格的數字自動判讀，僅供參考，不構成投資建議">
+        <div class="lbl">${updTag(MK.tx && MK.tx.at)}<span class="verdict ${v[1]}">${v[0]}</span></div>
+        ${preview}
+        <ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul>
+        <div class="sub"><b class="${v[1]}">${v[2]}</b></div>
+      </div>`;
+  }
+
   function renderMarket() {
     $('#market').innerHTML = taiexCard() + usCard() + futCard();
+    $('#market').insertAdjacentHTML('beforeend', brief());
     $('#meta').innerHTML = `資料日期 <b>${dates[LAST]}</b><br>共 ${T} 個交易日（${dates[0]} 起）<br>更新於 ${DATA.generatedAt}` +
       (Q.at ? `<br>行情更新 ${Q.at.slice(5).replace('-', '/')}` : '');
   }
