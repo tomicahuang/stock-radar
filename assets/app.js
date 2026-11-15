@@ -292,6 +292,41 @@
     st.bothBuy = j >= 0 && st.fi && st.it && st.fi[j] > 0 && st.it[j] > 0;
   }
 
+  // Last 6 trading days: TAIEX change + market-wide sum of foreign / trust / dealer net buy (lots).
+  const MKT_FLOW = (() => {
+    const taiex = DATA.index && DATA.index.taiex ? ffill(DATA.index.taiex) : null;
+    const days = [];
+    for (let t = Math.max(1, LAST - 5); t <= LAST; t++) {
+      const d = dates[t], prev = taiex ? taiex[t - 1] : null, cur = taiex ? taiex[t] : null;
+      const ij = instDates.indexOf(d);
+      let fi = 0, it = 0, dl = 0, ok = false;
+      if (ij >= 0) {
+        for (const st of stocks) {
+          if (st.fi && st.fi[ij] != null) { fi += st.fi[ij]; ok = true; }
+          if (st.it && st.it[ij] != null) it += st.it[ij];
+          if (st.dl && st.dl[ij] != null) dl += st.dl[ij];
+        }
+      }
+      days.push({
+        d, cur, chg: prev != null && cur != null ? cur - prev : null,
+        chgPct: prev && cur ? cur / prev - 1 : null,
+        fi: ok ? fi : null, it: ok ? it : null, dl: ok ? dl : null, all: ok ? fi + it + dl : null
+      });
+    }
+    let streak = 0, dir = 0;
+    if (taiex) {
+      for (let t = LAST; t >= 1; t--) {
+        const cur = taiex[t], prev = taiex[t - 1];
+        if (cur == null || prev == null || cur === prev) break;
+        const up = cur > prev;
+        if (!streak) { dir = up ? 1 : -1; streak = 1; continue; }
+        if ((dir > 0 && up) || (dir < 0 && !up)) streak++;
+        else break;
+      }
+    }
+    return { days, streak, dir };
+  })();
+
   // Industry codes that have stocks in the checked groups (electronics / shipping / traditional / finance).
   function visibleCodes() {
     return [...new Set(stocks.filter(s => state.groups.has(s.grp)).map(s => s.ind))].sort();
@@ -623,9 +658,15 @@
   };
   const RANK = { k: 'rank', t: '#', v: r => r.rank, h: r => `<span class="rank">${r.rank}</span>` };
   const SIG = { k: 'sig', t: '技術訊號', l: true, v: r => (r.st.dip ? 1 : 0), h: r => signalTags(r.st) };
-  const fmtLots = v => (v == null ? '–' : (v > 0 ? '+' : '') + Math.round(v).toLocaleString('zh-TW'));
+  const fmtLots = v => {
+    if (v == null) return '–';
+    const a = Math.abs(v);
+    const n = a >= 10000 ? (a / 10000).toFixed(a >= 100000 ? 0 : 1) + '萬' : Math.round(a).toLocaleString('zh-TW');
+    return (v > 0 ? '+' : v < 0 ? '−' : '') + n;
+  };
   const fmtM = v => (v == null ? '–' : Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(2));
   const lotsCell = v => `<span class="${cls(v)}">${fmtLots(v)}</span>`;
+  const side = v => (v == null ? '–' : v > 0 ? '買' : v < 0 ? '賣' : '平');
 
   // Break-below / move-above tables follow the MA picked in the controls (5 / 10 / 20 days).
   function colsCross() {
@@ -1023,6 +1064,16 @@
       }
       if (twLive) score += tx.chg >= 0.01 ? 1 : tx.chg <= -0.01 ? -1 : 0;
     }
+    if (MKT_FLOW.streak) {
+      lines.push(`大盤連${MKT_FLOW.dir > 0 ? '漲' : '跌'} ${MKT_FLOW.streak} 日`);
+      if (MKT_FLOW.dir > 0) score += 1; else score -= 1;
+    }
+    const lastFlow = MKT_FLOW.days[MKT_FLOW.days.length - 1];
+    if (lastFlow && lastFlow.fi != null) {
+      const tag = v => (v > 0 ? '買超' : v < 0 ? '賣超' : '平盤');
+      lines.push(`最新法人：外資${tag(lastFlow.fi)}、投信${tag(lastFlow.it)}、自營商${tag(lastFlow.dl)}`);
+      if (lastFlow.all < 0) score -= 1; else if (lastFlow.all > 0) score += 1;
+    }
     if (!lines.length) return '';
     let preview = '';
     if (night && !twLive && fut && fut.spot != null && fut.c != null) {
@@ -1041,9 +1092,30 @@
       </div>`;
   }
 
+  function flowStrip() {
+    if (!MKT_FLOW.days.length) return;
+    const streak = MKT_FLOW.streak
+      ? `<span class="flow-streak ${MKT_FLOW.dir > 0 ? 'up' : 'down'}">連${MKT_FLOW.dir > 0 ? '漲' : '跌'} ${MKT_FLOW.streak} 日</span>`
+      : '';
+    const head = `<div class="flow-head">近六日大盤・法人 ${streak}<small>單位：張（上市合計）</small></div>`;
+    const cells = MKT_FLOW.days.map(x => {
+      const ch = x.chg == null ? '–' : `${fmtDiff(x.chg, 0)}（${fmtPct(x.chgPct)}）`;
+      return `<div class="flow-day">
+        <div class="flow-d">${md(x.d)}</div>
+        <div class="flow-ch ${cls(x.chg)}">${ch}</div>
+        <div class="flow-row ${cls(x.fi)}"><span>外資</span><b>${side(x.fi)}</b><i>${fmtLots(x.fi)}</i></div>
+        <div class="flow-row ${cls(x.it)}"><span>投信</span><b>${side(x.it)}</b><i>${fmtLots(x.it)}</i></div>
+        <div class="flow-row ${cls(x.dl)}"><span>自營商</span><b>${side(x.dl)}</b><i>${fmtLots(x.dl)}</i></div>
+      </div>`;
+    }).join('');
+    $('#mktFlow').innerHTML = head + `<div class="flow-days">${cells}</div>`;
+  }
+
   function renderMarket() {
-    $('#market').innerHTML = taiexCard() + usCard() + futCard();
-    $('#market').insertAdjacentHTML('beforeend', brief());
+    // order: brief → TAIEX → futures → US (brief needs the other three to fill MK first)
+    const cards = { tx: taiexCard(), us: usCard(), fut: futCard() };
+    $('#market').innerHTML = brief() + cards.tx + cards.fut + cards.us;
+    flowStrip();
     $('#meta').innerHTML = `資料日期 <b>${dates[LAST]}</b><br>共 ${T} 個交易日（${dates[0]} 起）<br>更新於 ${DATA.generatedAt}` +
       (Q.at ? `<br>行情更新 ${Q.at.slice(5).replace('-', '/')}` : '');
   }
