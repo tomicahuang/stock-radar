@@ -139,9 +139,13 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; }
 }
 .flow-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 600; color: color-mix(in srgb, #64748b 70%, var(--text)); margin-bottom: 4px; }
 .flow-head small { font-weight: 500; color: var(--muted); margin-left: auto; }
-.flow-streak { padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; }
-.flow-streak.up { background: #ef4444; }
-.flow-streak.down { background: #16a34a; }
+.flow-streak {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 800; letter-spacing: .5px; line-height: 1.45;
+  color: #fff;
+}
+.flow-streak.up { background: #dc2626; color: #fff; }
+.flow-streak.down { background: #15803d; color: #fff; }
 .flow-days { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
 .flow-day { background: color-mix(in srgb, var(--panel) 88%, #64748b); border: 1px solid var(--line); border-radius: 8px; padding: 4px 6px; font-size: 11px; line-height: 1.35; }
 .flow-d { font-weight: 700; color: var(--muted); }
