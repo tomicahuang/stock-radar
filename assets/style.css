@@ -87,7 +87,8 @@
   color-scheme: light;
 }
 [data-theme="light"] .badge.badge { background: var(--panel); }
-[data-theme="light"] .kpi, [data-theme="light"] .panel, [data-theme="light"] .mkt { box-shadow: 0 1px 2px rgba(15, 23, 42, .06); }
+[data-theme="light"] .kpi, [data-theme="light"] .panel, [data-theme="light"] .mkt,
+[data-theme="light"] .balance, [data-theme="light"] .mkt-flow { box-shadow: 0 1px 2px rgba(15, 23, 42, .06); }
 
 .theme-btn { white-space: nowrap; }
 .corner { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
@@ -128,17 +129,138 @@ code { background: var(--panel-2); padding: 1px 6px; border-radius: 4px; }
 .maker { display: block; height: 28px; width: auto; margin-top: 4px; }
 
 .market { display: flex; gap: 12px; flex: 1; flex-wrap: wrap; }
-.mkt-flow {
-  flex: 1 1 100%;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  border-top: 3px solid #64748b;
-  padding: 6px 10px 8px;
-  background: linear-gradient(135deg, color-mix(in srgb, #64748b 12%, var(--panel)), var(--panel) 75%);
+/* Below sticky topbar so tall 天平／近六日 blocks never trap page scroll */
+.market-extra {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 10px 24px 4px;
 }
-.flow-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 600; color: color-mix(in srgb, #64748b 70%, var(--text)); margin-bottom: 4px; }
+.mkt-flow {
+  --m: #6366f1;
+  border: 1px solid color-mix(in srgb, var(--m) 40%, var(--line));
+  border-radius: 10px;
+  border-top: 3px solid var(--m);
+  padding: 6px 10px 8px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--m) 16%, var(--panel)), var(--panel) 75%);
+}
+
+/* ---------- 多空天平 ---------- */
+.balance {
+  --m: #e11d48;
+  border: 1px solid color-mix(in srgb, var(--m) 40%, var(--line));
+  border-radius: 10px;
+  border-top: 3px solid var(--m);
+  padding: 8px 12px 10px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--m) 16%, var(--panel)), var(--panel) 75%);
+}
+.balance-head {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; font-weight: 700;
+  color: color-mix(in srgb, var(--m) 75%, var(--text));
+  margin-bottom: 6px;
+}
+.balance-head small { font-weight: 500; color: var(--muted); }
+.balance-ratio {
+  margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 800; letter-spacing: .3px;
+}
+.balance-head .upd {
+  color: var(--muted); font-weight: 500; font-size: 11px;
+}
+.balance-ratio .bull { color: #dc2626; }
+.balance-ratio .bear { color: #15803d; }
+.balance-pct {
+  display: flex; width: 100%; margin-bottom: 4px;
+  font-size: 12px; font-weight: 800; letter-spacing: .3px;
+  font-variant-numeric: tabular-nums;
+}
+.balance-pct .side {
+  min-width: 0; text-align: center;
+}
+.balance-pct .bull { color: #dc2626; }
+.balance-pct .bear { color: #15803d; }
+.balance-pct .flat { color: var(--muted); flex: 1; text-align: center; font-weight: 600; }
+.balance-bar {
+  display: flex; height: 22px; width: 100%;
+  border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--line);
+}
+.balance-bar .side {
+  height: 100%; min-width: 0;
+  transition: flex-basis .25s ease;
+}
+.balance-bar .bull { background: #ef4444; }
+.balance-bar .bear { background: #22c55e; }
+.balance-cols {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; margin-top: 8px;
+  align-items: start;
+}
+.balance-hits { margin-top: 8px; }
+.balance-col h4 {
+  margin: 0 0 4px; font-size: 12px; font-weight: 800;
+}
+.balance-col.bull h4 { color: #dc2626; }
+.balance-col.bear h4 { color: #15803d; }
+.balance-col ul {
+  margin: 0; padding: 0; list-style: none;
+  font-size: 11px; line-height: 1.4; color: var(--text);
+}
+.balance-col li {
+  padding: 1px 0 1px 10px;
+  position: relative;
+}
+.balance-col li::before {
+  content: '•'; position: absolute; left: 0; font-weight: 800;
+}
+.balance-col.bull li::before { color: #dc2626; }
+.balance-col.bear li::before { color: #15803d; }
+.balance-empty {
+  margin: 0; font-size: 11px; color: var(--muted);
+}
+.balance-quick {
+  display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px;
+}
+.balance-chip {
+  appearance: none; cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--m) 35%, var(--line));
+  border-radius: 999px; padding: 3px 10px;
+  font-size: 11px; font-weight: 700; line-height: 1.35;
+  background: color-mix(in srgb, var(--m) 8%, var(--panel));
+  color: var(--text);
+}
+.balance-chip.on {
+  background: color-mix(in srgb, var(--m) 22%, var(--panel));
+  border-color: var(--m); color: color-mix(in srgb, var(--m) 70%, var(--text));
+}
+.balance-actions {
+  margin-top: 8px; display: flex; align-items: center; gap: 8px;
+}
+.balance-btn {
+  appearance: none; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 85%, #64748b);
+  color: var(--text); font-size: 11px; font-weight: 700;
+  padding: 3px 10px; line-height: 1.4;
+}
+.balance-btn[aria-expanded="true"] {
+  border-color: #94a3b8;
+  background: color-mix(in srgb, #94a3b8 18%, var(--panel));
+}
+.balance-col small.bw { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+.balance-catalog {
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  max-height: 240px; overflow: auto;
+}
+.balance-catalog .tag {
+  display: inline-block; min-width: 2.2em; margin-right: 4px;
+  font-size: 10px; font-weight: 800; letter-spacing: .2px;
+}
+.balance-catalog .bull .tag { color: #dc2626; }
+.balance-catalog .bear .tag { color: #15803d; }
+.balance-catalog li.pending { color: var(--muted); }
+.balance-note { margin-top: 6px; font-size: 11px; color: var(--muted); }
+.flow-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--m) 75%, var(--text)); margin-bottom: 4px; }
 .flow-head small { font-weight: 500; color: var(--muted); margin-left: auto; }
+.flow-head .upd { color: var(--muted); font-weight: 500; font-size: 11px; }
 .flow-streak {
   display: inline-block; padding: 2px 10px; border-radius: 999px;
   font-size: 13px; font-weight: 800; letter-spacing: .5px; line-height: 1.45;
@@ -707,7 +829,7 @@ tbody tr:hover > td { background-color: var(--row-hover-cell); }
 @media (max-width: 1300px) {
   .topbar { gap: 12px 24px; }
   .market { order: 3; flex-basis: 100%; }
-  .mkt-flow { order: 4; }
+  .market-extra { padding: 8px 12px 4px; }
   .meta { margin-left: auto; }
   .mkt { flex: 1; }
 }

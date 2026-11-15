@@ -112,6 +112,8 @@
     divAnnOnly: false,
     divCanBuy: true,
     openCeleb: null,
+    balanceRulesOpen: false,
+    balanceCode: null,
     sortKey: null,
     sortDir: 1
   };
@@ -334,7 +336,7 @@
 
   // ------------------------------------------------------------------ remember settings on this device
   const SAVE_KEY = 'stock-radar-settings-v2';
-  const SAVE_SKIP = new Set(['openCeleb', 'sortKey', 'sortDir', 'subMore', 'query']);
+  const SAVE_SKIP = new Set(['openCeleb', 'balanceRulesOpen', 'balanceCode', 'sortKey', 'sortDir', 'subMore', 'query']);
   function saveState() {
     try {
       const o = {};
@@ -1065,7 +1067,6 @@
       if (twLive) score += tx.chg >= 0.01 ? 1 : tx.chg <= -0.01 ? -1 : 0;
     }
     if (MKT_FLOW.streak) {
-      lines.push(`大盤連${MKT_FLOW.dir > 0 ? '漲' : '跌'} ${MKT_FLOW.streak} 日`);
       if (MKT_FLOW.dir > 0) score += 1; else score -= 1;
     }
     const lastFlow = MKT_FLOW.days[MKT_FLOW.days.length - 1];
@@ -1097,7 +1098,7 @@
     const streak = MKT_FLOW.streak
       ? `<span class="flow-streak ${MKT_FLOW.dir > 0 ? 'up' : 'down'}">連${MKT_FLOW.dir > 0 ? '漲' : '跌'} ${MKT_FLOW.streak} 日</span>`
       : '';
-    const head = `<div class="flow-head">近六日大盤・法人 ${streak}<small>單位：張（上市合計）</small></div>`;
+    const head = `<div class="flow-head">近六日大盤 ${streak}<small>單位：張（上市合計）</small>${updTag(DATA.generatedAt)}</div>`;
     const cells = MKT_FLOW.days.map(x => {
       const ch = x.chg == null ? '–' : `${fmtDiff(x.chg, 0)}（${fmtPct(x.chgPct)}）`;
       return `<div class="flow-day">
@@ -1111,11 +1112,290 @@
     $('#mktFlow').innerHTML = head + `<div class="flow-days">${cells}</div>`;
   }
 
+  // 多空天平：只顯示目前符合的條件；完整 30 項由按鈕展開
+  function balanceIndexTech() {
+    const raw = DATA.index && DATA.index.taiex;
+    if (!raw) return null;
+    const fc = ffill(raw);
+    const ma5 = sma(fc, 5), ma10 = sma(fc, 10), ma20 = sma(fc, 20);
+    const r = rsi(fc, 14);
+    const { K, D } = kd(fc, fc, fc, 9);
+    const { osc } = macd(fc);
+    const volNow = stocks.reduce((s, st) => s + (st.v[LAST] || 0), 0);
+    const volPrev = stocks.reduce((s, st) => s + (st.v[LAST - 1] || 0), 0);
+    return { fc, ma5, ma10, ma20, r, K, D, osc, volNow, volPrev };
+  }
+
+  function flowSideStreak(key, sign) {
+    let n = 0;
+    for (let i = MKT_FLOW.days.length - 1; i >= 0; i--) {
+      const v = MKT_FLOW.days[i][key];
+      if (v == null || v === 0 || Math.sign(v) !== sign) break;
+      n++;
+    }
+    return n;
+  }
+
+  function instSideStreak(st, who, sign) {
+    let n = 0;
+    for (let j = instLast; j >= 0; j--) {
+      const x = instNet(st, who, j);
+      if (x == null || x === 0 || Math.sign(x) !== sign) break;
+      n++;
+    }
+    return n;
+  }
+
+  // 權重：2026-08-12～11-10（60 訊號日、前瞻 3 日）個股回測命中率映射 5～20；待資料項暫列中位
+  // 完整結果見 data/backtest-balance-result.json
+  const BALANCE_WEIGHTS = {
+    m_fi_buy: 5, m_fi_sell: 19, m_it_buy: 8, m_it_sell: 17, m_dl_buy: 6, m_dl_sell: 19,
+    m_all_buy: 5, m_all_sell: 20, m_fx_bull: 8, m_fx_bear: 19, m_basis_bull: 9, m_basis_bear: 16,
+    m_night_bull: 9, m_night_bear: 16, m_margin_up: 10, m_margin_dn: 10, m_short_dn: 10, m_short_up: 10,
+    m_pc_low: 10, m_pc_high: 10, m_big_buy: 10, m_big_sell: 10, m_ma_bull: 10, m_ma_bear: 16,
+    m_tech_bull: 9, m_tech_bear: 16, m_vol_bull: 10, m_vol_bear: 16, m_us_bull: 9, m_us_bear: 16,
+    s_fi_buy: 5, s_fi_sell: 19, s_it_buy: 8, s_it_sell: 17, s_dl_buy: 6, s_dl_sell: 19,
+    s_all_buy: 5, s_all_sell: 20, s_both_buy: 8, s_both_sell: 19, s_ma_bull: 10, s_ma_bear: 16,
+    s_above: 9, s_below: 16, s_bias_up: 10, s_bias_dn: 16, s_rsi_up: 9, s_rsi_dn: 17,
+    s_kd_up: 9, s_kd_dn: 16, s_macd_up: 9, s_macd_dn: 16, s_vol_up: 10, s_vol_dn: 16,
+    s_margin_up: 10, s_margin_dn: 10, s_short_dn: 10, s_short_up: 10, s_big_buy: 10, s_big_sell: 10
+  };
+  const BALANCE_QUICK = [
+    { code: null, label: '大盤' },
+    { code: '1303', label: '1303 南亞' },
+    { code: '3711', label: '3711 日月光投控' },
+    { code: '4958', label: '4958 臻鼎-KY' },
+    { code: '4927', label: '4927 泰鼎-KY' }
+  ];
+  const balW = id => BALANCE_WEIGHTS[id] ?? 5;
+  const balRule = (id, side, name, hit, pending) => ({ id, side, name, w: balW(id), hit, pending: !!pending });
+
+  function balanceCatalogMarket() {
+    const tech = balanceIndexTech();
+    const last = MKT_FLOW.days[MKT_FLOW.days.length - 1];
+    const { tx, us, fut, night } = MK;
+    const twLive = tx && tx.live;
+    const divSeason = /-0[6-9]-/.test(dates[LAST]);
+    const pending = () => false;
+    const bullAlign = tech && tech.ma5[LAST] != null && tech.ma5[LAST] > tech.ma10[LAST] && tech.ma10[LAST] > tech.ma20[LAST]
+      && tech.fc[LAST] > tech.ma5[LAST];
+    const bearAlign = tech && tech.ma5[LAST] != null && tech.ma5[LAST] < tech.ma10[LAST] && tech.ma10[LAST] < tech.ma20[LAST]
+      && tech.fc[LAST] < tech.ma5[LAST];
+    const kdGold = tech && tech.K[LAST] != null && tech.K[LAST - 1] != null
+      && tech.K[LAST] > tech.D[LAST] && tech.K[LAST - 1] <= tech.D[LAST - 1];
+    const kdDeath = tech && tech.K[LAST] != null && tech.K[LAST - 1] != null
+      && tech.K[LAST] < tech.D[LAST] && tech.K[LAST - 1] >= tech.D[LAST - 1];
+    const macdUp = tech && tech.osc[LAST] != null && tech.osc[LAST - 1] != null
+      && tech.osc[LAST - 1] <= 0 && tech.osc[LAST] > 0;
+    const macdDn = tech && tech.osc[LAST] != null && tech.osc[LAST - 1] != null
+      && tech.osc[LAST - 1] >= 0 && tech.osc[LAST] < 0;
+    const rsiUp = tech && tech.r[LAST] != null && tech.r[LAST - 1] != null
+      && tech.r[LAST - 1] < 35 && tech.r[LAST] > tech.r[LAST - 1];
+    const rsiDn = tech && tech.r[LAST] != null && tech.r[LAST - 1] != null
+      && tech.r[LAST - 1] > 65 && tech.r[LAST] < tech.r[LAST - 1];
+    const chg = tx && tx.chg != null ? tx.chg : (tech && tech.fc[LAST - 1] ? tech.fc[LAST] / tech.fc[LAST - 1] - 1 : null);
+    const volUp = tech && tech.volPrev > 0 && tech.volNow > tech.volPrev * 1.05;
+    const volDn = tech && tech.volPrev > 0 && tech.volNow < tech.volPrev * 0.95;
+
+    return [
+      balRule('m_fi_buy', 'bull', '外資現貨連買', () => flowSideStreak('fi', 1) >= 2),
+      balRule('m_fi_sell', 'bear', '外資現貨連賣', () => flowSideStreak('fi', -1) >= 2),
+      balRule('m_it_buy', 'bull', '投信連買', () => flowSideStreak('it', 1) >= 2),
+      balRule('m_it_sell', 'bear', '投信連賣', () => flowSideStreak('it', -1) >= 2),
+      balRule('m_dl_buy', 'bull', '自營商買超', () => !!(last && last.dl != null && last.dl > 0)),
+      balRule('m_dl_sell', 'bear', '自營商賣超', () => !!(last && last.dl != null && last.dl < 0)),
+      balRule('m_all_buy', 'bull', '三大法人合計買超', () => !!(last && last.all != null && last.all > 0)),
+      balRule('m_all_sell', 'bear', '三大法人合計賣超', () => !!(last && last.all != null && last.all < 0)),
+      balRule('m_fx_bull', 'bull', '外資期現貨同向偏多', () => !!(last && last.fi > 0 && fut && fut.basis != null && fut.basis > 0)),
+      balRule('m_fx_bear', 'bear', '外資期現貨同向偏空', () => !!(last && last.fi < 0 && fut && fut.basis != null && fut.basis < 0)),
+      balRule('m_basis_bull', 'bull', '台指期正價差擴大', () => !!(!divSeason && fut && fut.basis != null && fut.basis >= 100)),
+      balRule('m_basis_bear', 'bear', '台指期負價差擴大', () => !!(!divSeason && fut && fut.basis != null && fut.basis <= -100)),
+      balRule('m_night_bull', 'bull', '夜盤偏多', () => !!(!twLive && night && night.ch != null && night.ch >= 100)),
+      balRule('m_night_bear', 'bear', '夜盤偏空', () => !!(!twLive && night && night.ch != null && night.ch <= -100)),
+      balRule('m_margin_up', 'bull', '融資維持率回升', pending, true),
+      balRule('m_margin_dn', 'bear', '融資維持率下滑', pending, true),
+      balRule('m_short_dn', 'bull', '券資比下降', pending, true),
+      balRule('m_short_up', 'bear', '券資比升高', pending, true),
+      balRule('m_pc_low', 'bull', '選擇權 Put/Call 比偏低', pending, true),
+      balRule('m_pc_high', 'bear', '選擇權 Put/Call 比偏高', pending, true),
+      balRule('m_big_buy', 'bull', '大戶分點偏買', pending, true),
+      balRule('m_big_sell', 'bear', '大戶分點偏賣', pending, true),
+      balRule('m_ma_bull', 'bull', '均線多頭／站上 5・10・20', () => !!bullAlign),
+      balRule('m_ma_bear', 'bear', '均線空頭／跌破 5・10・20', () => !!bearAlign),
+      balRule('m_tech_bull', 'bull', 'RSI／KD／MACD 轉強', () => !!(rsiUp || kdGold || macdUp)),
+      balRule('m_tech_bear', 'bear', 'RSI／KD／MACD 轉弱', () => !!(rsiDn || kdDeath || macdDn)),
+      balRule('m_vol_bull', 'bull', '價漲量增／量價配合', () => !!(chg != null && chg > 0 && volUp)),
+      balRule('m_vol_bear', 'bear', '價跌量增／量價背離偏空', () => !!(chg != null && ((chg < 0 && volUp) || (chg > 0 && volDn)))),
+      balRule('m_us_bull', 'bull', '美股科技偏強／ADR 溢價', () => !!(
+        (us && us.sox && us.sox.chg != null && us.sox.chg >= 0.008)
+        || (us && us.prem != null && us.prem > 0 && us.tsm && us.tsm.chg != null && us.tsm.chg > 0)
+      )),
+      balRule('m_us_bear', 'bear', '美股科技偏弱／ADR 折價', () => !!(
+        (us && us.sox && us.sox.chg != null && us.sox.chg <= -0.008)
+        || (us && us.prem != null && us.prem < 0 && us.tsm && us.tsm.chg != null && us.tsm.chg < 0)
+      ))
+    ];
+  }
+
+  function balanceCatalogStock(st) {
+    const pending = () => false;
+    const hasInst = instLast >= 0 && st.fi;
+    const lastAll = hasInst ? instNet(st, 'all', instLast) : null;
+    const lastDl = hasInst && st.dl ? st.dl[instLast] : null;
+    const kdGold = st.K[LAST] != null && st.K[LAST - 1] != null
+      && st.K[LAST] > st.D[LAST] && st.K[LAST - 1] <= st.D[LAST - 1];
+    const kdDeath = st.K[LAST] != null && st.K[LAST - 1] != null
+      && st.K[LAST] < st.D[LAST] && st.K[LAST - 1] >= st.D[LAST - 1];
+    const macdUp = st.osc[LAST] != null && st.osc[LAST - 1] != null
+      && st.osc[LAST - 1] <= 0 && st.osc[LAST] > 0;
+    const macdDn = st.osc[LAST] != null && st.osc[LAST - 1] != null
+      && st.osc[LAST - 1] >= 0 && st.osc[LAST] < 0;
+    const rsiUp = st.rsi[LAST] != null && st.rsi[LAST - 1] != null
+      && st.rsi[LAST - 1] < 35 && st.rsi[LAST] > st.rsi[LAST - 1];
+    const rsiDn = st.rsi[LAST] != null && st.rsi[LAST - 1] != null
+      && st.rsi[LAST - 1] > 65 && st.rsi[LAST] < st.rsi[LAST - 1];
+    const chg = st.dayChg;
+    const volNow = st.v[LAST] || 0, volPrev = st.v[LAST - 1] || 0;
+    const volUp = volPrev > 0 && volNow > volPrev * 1.05;
+    const volDn = volPrev > 0 && volNow < volPrev * 0.95;
+    const aboveShort = isAbove(st, 5) && isAbove(st, 10) && isAbove(st, 20);
+    const belowShort = isBelow(st, 5) && isBelow(st, 10) && isBelow(st, 20);
+
+    return [
+      balRule('s_fi_buy', 'bull', '外資連買', () => hasInst && instSideStreak(st, 'fi', 1) >= 2),
+      balRule('s_fi_sell', 'bear', '外資連賣', () => hasInst && instSideStreak(st, 'fi', -1) >= 2),
+      balRule('s_it_buy', 'bull', '投信連買', () => hasInst && instSideStreak(st, 'it', 1) >= 2),
+      balRule('s_it_sell', 'bear', '投信連賣', () => hasInst && instSideStreak(st, 'it', -1) >= 2),
+      balRule('s_dl_buy', 'bull', '自營商買超', () => lastDl != null && lastDl > 0),
+      balRule('s_dl_sell', 'bear', '自營商賣超', () => lastDl != null && lastDl < 0),
+      balRule('s_all_buy', 'bull', '三大法人合計買超', () => lastAll != null && lastAll > 0),
+      balRule('s_all_sell', 'bear', '三大法人合計賣超', () => lastAll != null && lastAll < 0),
+      balRule('s_both_buy', 'bull', '外資＋投信同買', () => !!(st.bothBuy)),
+      balRule('s_both_sell', 'bear', '外資＋投信同賣', () => {
+        if (instLast < 0 || !st.fi || !st.it) return false;
+        const f = st.fi[instLast], t = st.it[instLast];
+        return f != null && t != null && f < 0 && t < 0;
+      }),
+      balRule('s_ma_bull', 'bull', '均線多頭排列', () => !!st.bullAlign),
+      balRule('s_ma_bear', 'bear', '均線空頭排列', () => !!st.bearAlign),
+      balRule('s_above', 'bull', '站上 5／10／20 日線', () => !!aboveShort),
+      balRule('s_below', 'bear', '跌破 5／10／20 日線', () => !!belowShort),
+      balRule('s_bias_up', 'bull', '月線上／乖離轉正', () => st.bias != null && st.bias > 0),
+      balRule('s_bias_dn', 'bear', '月線下／乖離轉負', () => st.bias != null && st.bias < 0),
+      balRule('s_rsi_up', 'bull', 'RSI 由超賣區回升', () => !!rsiUp),
+      balRule('s_rsi_dn', 'bear', 'RSI 超買區回落', () => !!rsiDn),
+      balRule('s_kd_up', 'bull', 'KD 黃金交叉', () => !!kdGold),
+      balRule('s_kd_dn', 'bear', 'KD 死亡交叉', () => !!kdDeath),
+      balRule('s_macd_up', 'bull', 'MACD 柱翻紅／金叉', () => !!macdUp),
+      balRule('s_macd_dn', 'bear', 'MACD 柱翻綠／死叉', () => !!macdDn),
+      balRule('s_vol_up', 'bull', '價漲量增', () => !!(chg != null && chg > 0 && volUp)),
+      balRule('s_vol_dn', 'bear', '價跌量增／量價背離', () => !!(chg != null && ((chg < 0 && volUp) || (chg > 0 && volDn)))),
+      balRule('s_margin_up', 'bull', '融資維持率回升', pending, true),
+      balRule('s_margin_dn', 'bear', '融資維持率下滑', pending, true),
+      balRule('s_short_dn', 'bull', '券資比下降', pending, true),
+      balRule('s_short_up', 'bear', '券資比升高', pending, true),
+      balRule('s_big_buy', 'bull', '大戶分點偏買', pending, true),
+      balRule('s_big_sell', 'bear', '大戶分點偏賣', pending, true)
+    ];
+  }
+
+  // Resolved after ETF prep (etfByCode is declared later); until then only listed stocks resolve.
+  let balanceLookup = code => byCode[code] || null;
+  function balanceFocus() {
+    const code = state.balanceCode;
+    return code ? balanceLookup(code) : null;
+  }
+
+  function balanceScale() {
+    const st = balanceFocus();
+    const catalog = st ? balanceCatalogStock(st) : balanceCatalogMarket();
+    const title = st ? `${esc(st.name)} 多空方天平` : '大盤 多空方天平';
+    const hitBull = catalog.filter(r => r.side === 'bull' && r.hit());
+    const hitBear = catalog.filter(r => r.side === 'bear' && r.hit());
+    const bullScore = hitBull.reduce((s, r) => s + (r.w || 0), 0);
+    const bearScore = hitBear.reduce((s, r) => s + (r.w || 0), 0);
+    const tot = bullScore + bearScore;
+    const bp = tot ? Math.round(bullScore / tot * 100) : 50, ep = tot ? 100 - bp : 50;
+    const pctRow = tot
+      ? `<span class="side bull" style="flex: ${bullScore} 1 0">多方 ${bp}%</span><span class="side bear" style="flex: ${bearScore} 1 0">空方 ${ep}%</span>`
+      : `<span class="flat">多空觀望</span>`;
+    const list = (rows, empty) => rows.length
+      ? `<ul>${rows.map(r => `<li>${r.name}<small class="bw"> ${r.w}</small></li>`).join('')}</ul>`
+      : `<p class="balance-empty">${empty}</p>`;
+    const catList = (side) => catalog.filter(r => r.side === side)
+      .map(r => `<li class="${r.pending ? 'pending' : ''}"><span class="tag">${side === 'bull' ? '多方' : '空方'}</span>${r.name}<small class="bw"> ${r.w}</small>${r.pending ? '（待資料）' : ''}</li>`).join('');
+    const cur = st ? st.code : '';
+    const quick = BALANCE_QUICK.map(q => {
+      const on = (q.code || '') === cur ? ' on' : '';
+      return `<button type="button" class="balance-chip${on}" data-bal="${q.code || ''}">${esc(q.label)}</button>`;
+    }).join('');
+    const open = state.balanceRulesOpen;
+    const U = window.US_DATA;
+    const balAt = st
+      ? DATA.generatedAt
+      : [Q.at, DATA.generatedAt, U && U.generatedAt].filter(Boolean).sort().pop();
+    return `
+      <div class="balance-head">${title}
+        <span class="balance-ratio"><span class="bull">多 ${bullScore} 分</span> ／ <span class="bear">空 ${bearScore} 分</span></span>
+        ${updTag(balAt)}
+      </div>
+      <div class="balance-quick">${quick}</div>
+      <div class="balance-pct">${pctRow}</div>
+      <div class="balance-bar" title="依加權分數寬度表示多空比例">
+        <div class="side bull" style="flex: ${tot ? bullScore : 1} 1 0"></div>
+        <div class="side bear" style="flex: ${tot ? bearScore : 1} 1 0"></div>
+      </div>
+      <div class="balance-cols balance-hits">
+        <div class="balance-col bull"><h4>符合多方</h4>${list(hitBull, '目前無')}</div>
+        <div class="balance-col bear"><h4>符合空方</h4>${list(hitBear, '目前無')}</div>
+      </div>
+      <div class="balance-actions">
+        <button type="button" class="balance-btn" id="balanceRulesBtn" aria-expanded="${open}">天平條件 ${catalog.length}</button>
+      </div>
+      <div class="balance-catalog" id="balanceRules" ${open ? '' : 'hidden'}>
+        <div class="balance-cols">
+          <div class="balance-col bull"><h4>多方條件</h4><ul>${catList('bull')}</ul></div>
+          <div class="balance-col bear"><h4>空方條件</h4><ul>${catList('bear')}</ul></div>
+        </div>
+        <p class="balance-note">共 ${catalog.length} 項；百分比＝加權分數占比（示意權重，之後可回測調整）。灰字待資料不計分。${st ? `（目前：${esc(st.code)} ${esc(st.name)}）` : '（目前：大盤）'}</p>
+      </div>`;
+  }
+
+  function renderBalance() {
+    const top = $('#balanceTop');
+    if (!top) return;
+    const st = balanceFocus();
+    top.setAttribute('aria-label', st ? `${st.name} 多空方天平` : '大盤 多空方天平');
+    top.innerHTML = balanceScale();
+    const btn = $('#balanceRulesBtn'), panel = $('#balanceRules');
+    if (btn && panel) {
+      btn.onclick = e => {
+        e.stopPropagation();
+        state.balanceRulesOpen = !state.balanceRulesOpen;
+        panel.hidden = !state.balanceRulesOpen;
+        btn.setAttribute('aria-expanded', String(state.balanceRulesOpen));
+      };
+    }
+    top.querySelectorAll('[data-bal]').forEach(b => {
+      b.onclick = e => {
+        e.stopPropagation();
+        const code = b.getAttribute('data-bal') || null;
+        setBalanceFocus(code);
+      };
+    });
+  }
+
+  function setBalanceFocus(code) {
+    state.balanceCode = code || null;
+    renderBalance();
+  }
+
   function renderMarket() {
     // order: brief → TAIEX → futures → US (brief needs the other three to fill MK first)
     const cards = { tx: taiexCard(), us: usCard(), fut: futCard() };
     $('#market').innerHTML = brief() + cards.tx + cards.fut + cards.us;
     flowStrip();
+    renderBalance();
     $('#meta').innerHTML = `資料日期 <b>${dates[LAST]}</b><br>共 ${T} 個交易日（${dates[0]} 起）<br>更新於 ${DATA.generatedAt}` +
       (Q.at ? `<br>行情更新 ${Q.at.slice(5).replace('-', '/')}` : '');
   }
@@ -1327,7 +1607,9 @@
       ${notes ? `<h3>名人觀點</h3><ul class="notes">${notes}</ul>` : ''}`;
     $('#drawer').classList.add('show');
     $('#backdrop').classList.add('show');
-    $('#drClose').onclick = closeDrawer;
+    const closeBtn = $('#drClose');
+    if (closeBtn) closeBtn.onclick = closeDrawer;
+    try { setBalanceFocus(st.code); } catch (err) { console.error(err); }
   }
 
   function chainLines(st) {
@@ -1345,8 +1627,10 @@
   }
 
   function closeDrawer() {
-    $('#drawer').classList.remove('show');
-    $('#backdrop').classList.remove('show');
+    const dr = $('#drawer'), bd = $('#backdrop');
+    if (dr) dr.classList.remove('show');
+    if (bd) bd.classList.remove('show');
+    // Keep the stock/ETF focus so the scale stays on the chosen name after the drawer closes.
   }
 
   // ------------------------------------------------------------------ ETF view
@@ -1539,6 +1823,7 @@
   }
   const etfByCode = Object.fromEntries(etfs.map(s => [s.code, s]));
   const anyCode = code => byCode[code] || etfByCode[code];
+  balanceLookup = code => byCode[code] || etfByCode[code] || null;
 
   const etfState = {
     view: 'stock',
@@ -1854,7 +2139,9 @@
       ${notes ? `<h3>名人觀點</h3><ul class="notes">${notes}</ul>` : ''}`;
     $('#drawer').classList.add('show');
     $('#backdrop').classList.add('show');
-    $('#drClose').onclick = closeDrawer;
+    const closeBtn = $('#drClose');
+    if (closeBtn) closeBtn.onclick = closeDrawer;
+    try { setBalanceFocus(st.code); } catch (err) { console.error(err); }
   }
 
   function exportEtfCsv() {
@@ -2268,6 +2555,7 @@
         </div>
         <p class="hint">型態是依均線、近 60 日區間與 MACD 自動判斷的參考，不構成投資建議。</p>
       </section>`;
+    setBalanceFocus(st.code);
   }
 
   function bindTrend() {
@@ -2709,6 +2997,7 @@
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
   }
 
+  closeDrawer();
   renderMarket();
   renderCelebs();
   bind();
