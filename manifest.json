@@ -1,6 +1,7 @@
 {
   "name": "台灣股票聚焦鏡",
   "short_name": "台灣股票聚焦鏡",
+  "version": "2.9",
   "start_url": "./index.html",
   "display": "browser",
   "background_color": "#ffffff",

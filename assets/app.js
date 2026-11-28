@@ -1102,11 +1102,15 @@
     const cells = MKT_FLOW.days.map(x => {
       const ch = x.chg == null ? '–' : `${fmtDiff(x.chg, 0)}（${fmtPct(x.chgPct)}）`;
       return `<div class="flow-day">
-        <div class="flow-d">${md(x.d)}</div>
-        <div class="flow-ch ${cls(x.chg)}">${ch}</div>
-        <div class="flow-row ${cls(x.fi)}"><span>外資</span><b>${side(x.fi)}</b><i>${fmtLots(x.fi)}</i></div>
-        <div class="flow-row ${cls(x.it)}"><span>投信</span><b>${side(x.it)}</b><i>${fmtLots(x.it)}</i></div>
-        <div class="flow-row ${cls(x.dl)}"><span>自營商</span><b>${side(x.dl)}</b><i>${fmtLots(x.dl)}</i></div>
+        <div class="flow-meta">
+          <div class="flow-d">${md(x.d)}</div>
+          <div class="flow-ch ${cls(x.chg)}">${ch}</div>
+        </div>
+        <div class="flow-inst">
+          <div class="flow-row ${cls(x.fi)}"><span>外資</span><b>${side(x.fi)}</b><i>${fmtLots(x.fi)}</i></div>
+          <div class="flow-row ${cls(x.it)}"><span>投信</span><b>${side(x.it)}</b><i>${fmtLots(x.it)}</i></div>
+          <div class="flow-row ${cls(x.dl)}"><span>自營商</span><b>${side(x.dl)}</b><i>${fmtLots(x.dl)}</i></div>
+        </div>
       </div>`;
     }).join('');
     $('#mktFlow').innerHTML = head + `<div class="flow-days">${cells}</div>`;
