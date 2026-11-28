@@ -294,25 +294,37 @@
     st.bothBuy = j >= 0 && st.fi && st.it && st.fi[j] > 0 && st.it[j] > 0;
   }
 
-  // Last 6 trading days: TAIEX change + market-wide sum of foreign / trust / dealer net buy (lots).
+  // Last 6 trading days: TAIEX change + market-wide foreign / trust / dealer net buy.
+  // Lots from T86; 億元估 = Σ(張 × 1000 × 當日收盤) / 1e8.
   const MKT_FLOW = (() => {
     const taiex = DATA.index && DATA.index.taiex ? ffill(DATA.index.taiex) : null;
     const days = [];
     for (let t = Math.max(1, LAST - 5); t <= LAST; t++) {
       const d = dates[t], prev = taiex ? taiex[t - 1] : null, cur = taiex ? taiex[t] : null;
       const ij = instDates.indexOf(d);
-      let fi = 0, it = 0, dl = 0, ok = false;
+      let fi = 0, it = 0, dl = 0, fiYi = 0, itYi = 0, dlYi = 0, ok = false, yiOk = false;
       if (ij >= 0) {
         for (const st of stocks) {
-          if (st.fi && st.fi[ij] != null) { fi += st.fi[ij]; ok = true; }
-          if (st.it && st.it[ij] != null) it += st.it[ij];
-          if (st.dl && st.dl[ij] != null) dl += st.dl[ij];
+          const px = st.fc ? st.fc[t] : null;
+          if (st.fi && st.fi[ij] != null) {
+            fi += st.fi[ij]; ok = true;
+            if (px != null) { fiYi += st.fi[ij] * 1000 * px; yiOk = true; }
+          }
+          if (st.it && st.it[ij] != null) {
+            it += st.it[ij];
+            if (px != null) { itYi += st.it[ij] * 1000 * px; yiOk = true; }
+          }
+          if (st.dl && st.dl[ij] != null) {
+            dl += st.dl[ij];
+            if (px != null) { dlYi += st.dl[ij] * 1000 * px; yiOk = true; }
+          }
         }
       }
       days.push({
         d, cur, chg: prev != null && cur != null ? cur - prev : null,
         chgPct: prev && cur ? cur / prev - 1 : null,
-        fi: ok ? fi : null, it: ok ? it : null, dl: ok ? dl : null, all: ok ? fi + it + dl : null
+        fi: ok ? fi : null, it: ok ? it : null, dl: ok ? dl : null, all: ok ? fi + it + dl : null,
+        fiYi: yiOk ? fiYi / 1e8 : null, itYi: yiOk ? itYi / 1e8 : null, dlYi: yiOk ? dlYi / 1e8 : null
       });
     }
     let streak = 0, dir = 0;
@@ -665,6 +677,13 @@
     const a = Math.abs(v);
     const n = a >= 10000 ? (a / 10000).toFixed(a >= 100000 ? 0 : 1) + '萬' : Math.round(a).toLocaleString('zh-TW');
     return (v > 0 ? '+' : v < 0 ? '−' : '') + n;
+  };
+  // Estimated NT$ 億元 (from lots × 1000 × close).
+  const fmtYi = v => {
+    if (v == null) return '–';
+    const a = Math.abs(v);
+    const n = a >= 100 ? a.toFixed(0) : a >= 10 ? a.toFixed(1) : a.toFixed(2);
+    return (v > 0 ? '+' : v < 0 ? '−' : '') + n + '億';
   };
   const fmtM = v => (v == null ? '–' : Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(2));
   const lotsCell = v => `<span class="${cls(v)}">${fmtLots(v)}</span>`;
@@ -1098,7 +1117,11 @@
     const streak = MKT_FLOW.streak
       ? `<span class="flow-streak ${MKT_FLOW.dir > 0 ? 'up' : 'down'}">連${MKT_FLOW.dir > 0 ? '漲' : '跌'} ${MKT_FLOW.streak} 日</span>`
       : '';
-    const head = `<div class="flow-head">近六日大盤 ${streak}<small>單位：張（上市合計）</small>${updTag(DATA.generatedAt)}</div>`;
+    const head = `<div class="flow-head">近六日大盤 ${streak}<small>單位：億元（張×收盤估）</small>${updTag(DATA.generatedAt)}</div>`;
+    const box = (label, v) => {
+      const c = cls(v) || 'flat';
+      return `<div class="flow-box ${c}"><span>${label}</span> <b>${side(v)}</b><i>${fmtYi(v)}</i></div>`;
+    };
     const cells = MKT_FLOW.days.map(x => {
       const ch = x.chg == null ? '–' : `${fmtDiff(x.chg, 0)}（${fmtPct(x.chgPct)}）`;
       return `<div class="flow-day">
@@ -1107,9 +1130,9 @@
           <div class="flow-ch ${cls(x.chg)}">${ch}</div>
         </div>
         <div class="flow-inst">
-          <div class="flow-row ${cls(x.fi)}"><span>外資</span><b>${side(x.fi)}</b><i>${fmtLots(x.fi)}</i></div>
-          <div class="flow-row ${cls(x.it)}"><span>投信</span><b>${side(x.it)}</b><i>${fmtLots(x.it)}</i></div>
-          <div class="flow-row ${cls(x.dl)}"><span>自營商</span><b>${side(x.dl)}</b><i>${fmtLots(x.dl)}</i></div>
+          ${box('外資', x.fiYi)}
+          ${box('投信', x.itYi)}
+          ${box('自營商', x.dlYi)}
         </div>
       </div>`;
     }).join('');
